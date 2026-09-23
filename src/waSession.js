@@ -335,7 +335,6 @@ export class WaSession {
       meJid
     });
 
-    this.results = items;
     this.stats = stats;
 
     // מנתקים מיד: מרגע זה המכשיר המקושר מבוטל בצד וואטסאפ
@@ -347,10 +346,14 @@ export class WaSession {
     this.incoming.clear();
     this.names.clear();
 
+    // ההצלבה והייצוא קורים בדפדפן. השרת לא שומר את המספרים אחרי השליחה.
+    this.results = null;
+
     this.setState('done', {
       stats,
       items: items.map((r, i) => ({
         i,
+        phone: r.phone,
         display: r.display,
         pushName: r.pushName,
         business: r.business,

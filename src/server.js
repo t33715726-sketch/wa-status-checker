@@ -11,8 +11,8 @@ import { Server as SocketServer } from 'socket.io';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { sessions } from './sessionManager.js';
-import { buildVcf, vcfFilename, sanitizePrefix } from './vcf.js';
 import { recordScan } from './stats.js';
+import { isConfigured as meConfigured, normalizeMsisdn } from './providers/meProvider.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '..', 'public');
@@ -54,49 +54,27 @@ const apiLimiter = rateLimit({
   legacyHeaders: false
 });
 
-app.get('/healthz', (_req, res) => {
+/**
+ * אילו מקורות נתונים זמינים בשרת הזה.
+ * הדף בונה לפי זה את מסך בחירת המקור, במקום להציג מסלול שלא יעבוד.
+ */
+app.get('/api/sources', apiLimiter, (_req, res) => {
+  res.json({ whatsapp: true, me: meConfigured() });
+});
+
+app.get('/healthz', apiLimiter, (_req, res) => {
   res.json({ ok: true, sessions: sessions.size, uptime: Math.round(process.uptime()) });
 });
 
-/** ייצוא vCard. הטלפונים עצמם נשארים בשרת - הלקוח שולח רק אינדקסים. */
-app.post('/api/export', apiLimiter, (req, res) => {
-  const { sessionId, ids, prefix } = req.body || {};
-
-  if (typeof sessionId !== 'string' || sessionId.length > 64) {
-    return res.status(400).json({ error: 'BAD_SESSION' });
-  }
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'NO_SELECTION' });
-  }
-  if (ids.length > config.limits.maxExport) {
-    return res.status(413).json({ error: 'TOO_MANY' });
-  }
-
-  const session = sessions.get(sessionId);
-  if (!session || !Array.isArray(session.results)) {
-    return res.status(404).json({ error: 'SESSION_EXPIRED' });
-  }
-
-  const picked = [];
-  const seen = new Set();
-  for (const raw of ids) {
-    const i = Number(raw);
-    if (!Number.isInteger(i) || i < 0 || i >= session.results.length) continue;
-    if (seen.has(i)) continue;
-    seen.add(i);
-    picked.push(session.results[i]);
-  }
-  if (picked.length === 0) return res.status(400).json({ error: 'NO_SELECTION' });
-
-  const body = buildVcf(picked, sanitizePrefix(prefix));
-
-  res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${vcfFilename()}"`);
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  logger.info({ exported: picked.length }, 'vcf exported');
-  res.send(body);
-});
+/*
+ * אין כאן נקודת קצה לייצוא, וזה מכוון.
+ *
+ * הגרסה הראשונה בנתה את הקובץ בשרת. זו הייתה טעות: השרת לא יודע מי כבר
+ * שמור אצל המשתמש, ולכן הקובץ הכיל אנשי קשר קיימים - והייבוא דרס להם
+ * את השמות. עכשיו ההצלבה מול ספר הטלפונים והרכבת הקובץ קורות בדפדפן,
+ * מול קובץ הייצוא שהמשתמש בוחר. ספר הטלפונים שלו לא עוזב את המכשיר,
+ * והשרת לא מחזיק מספרי טלפון אחרי שליחת התוצאה.
+ */
 
 /** סיום יזום: המשתמש מבקש למחוק הכול עכשיו */
 app.post('/api/end', apiLimiter, async (req, res) => {
@@ -132,21 +110,99 @@ const io = new SocketServer(server, {
   connectionStateRecovery: { maxDisconnectionDuration: 2 * 60 * 1000 }
 });
 
+/**
+ * ה-IP של הלקוח, לפי אותה מדיניות שאקספרס משתמש בה.
+ *
+ * הערך השמאלי ב-X-Forwarded-For נשלט במלואו על ידי הלקוח. קריאה שלו
+ * פירושה שכל handshake יכול להציג IP אחר, וכל הגבלה לפי IP מתאפסת.
+ * סופרים מהסוף: המזהה שהפרוקסי שלנו הוסיף הוא האחרון.
+ */
 const clientIp = (socket) => {
+  // TRUST_PROXY=0 פירושו שאין פרוקסי, ולכן ה-header כולו חסר ערך
+  if (config.trustProxy <= 0) return socket.handshake.address || 'unknown';
+
   const fwd = socket.handshake.headers['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd.length) return fwd.split(',')[0].trim();
+  if (typeof fwd === 'string' && fwd.length) {
+    const chain = fwd.split(',').map((v) => v.trim()).filter(Boolean);
+    const idx = chain.length - config.trustProxy;
+    // רק אם השרשרת ארוכה מספיק. שרשרת קצרה מהצפוי פירושה שהבקשה
+    // לא עברה בפרוקסי שלנו, ולכן כל ערך בה נשלט על ידי הלקוח -
+    // נפילה חזרה אליו מאפסת כל הגבלה לפי IP.
+    if (idx >= 0 && chain[idx]) return chain[idx];
+  }
   return socket.handshake.address || 'unknown';
 };
 
-const normalizePhone = (value) => {
-  if (typeof value !== 'string') return null;
-  let digits = value.replace(/\D/g, '');
-  if (!digits) return null;
-  // 05X... ישראלי -> 9725X...
-  if (digits.startsWith('0')) digits = `972${digits.slice(1)}`;
-  if (digits.length < 8 || digits.length > 15) return null;
-  return digits;
+/**
+ * הגבלת קצב לאירועי סוקט. socket.io לא עובר במידלוור של אקספרס,
+ * ולכן express-rate-limit לא נוגע בו בכלל.
+ */
+const startHits = new Map();
+
+const tooManyStarts = (ip) => {
+  const now = Date.now();
+  const win = config.limits.startWindowMs;
+  const hits = (startHits.get(ip) || []).filter((t) => now - t < win);
+  if (hits.length >= config.limits.startMax) {
+    startHits.set(ip, hits);
+    return true;
+  }
+  hits.push(now);
+  startHits.set(ip, hits);
+  return false;
 };
+
+// ניקוי תקופתי כדי שהמפה לא תגדל בלי גבול
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, hits] of startHits) {
+    const live = hits.filter((t) => now - t < config.limits.startWindowMs);
+    if (live.length) startHits.set(ip, live);
+    else startHits.delete(ip);
+  }
+}, 60_000).unref?.();
+
+/**
+ * הגבלה לכל מספר יעד, בנפרד מהגבלת ה-IP.
+ * בלעדיה אפשר להפציץ קורבן ב-SMS על חשבון בעל המוצר.
+ */
+const otpHits = new Map();
+
+const OTP_MAP_CAP = 50_000;
+
+const tooManyOtps = (phone) => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  // תקרה קשיחה: מפתח לכל מספר יעד חי יממה, ובלעדיה המפה גדלה בלי גבול
+  if (!otpHits.has(phone) && otpHits.size >= OTP_MAP_CAP) return true;
+  const hits = (otpHits.get(phone) || []).filter((t) => now - t < day);
+  if (hits.length >= config.me.maxOtpPerPhone) {
+    otpHits.set(phone, hits);
+    return true;
+  }
+  hits.push(now);
+  otpHits.set(phone, hits);
+  return false;
+};
+
+setInterval(() => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  for (const [phone, hits] of otpHits) {
+    const live = hits.filter((t) => now - t < day);
+    if (live.length) otpHits.set(phone, live);
+    else otpHits.delete(phone);
+  }
+}, 10 * 60_000).unref?.();
+
+/**
+ * מנרמל אחד לכל המערכת.
+ *
+ * שני מנרמלים שונים פירושם שהמפתח שנספר בהגבלת הקצב אינו הערך
+ * שנשלח בפועל: "00501234567" ו-"501234567" מגיעים לאותו טלפון
+ * ומקבלים שתי מכסות נפרדות.
+ */
+const normalizePhone = (value) => normalizeMsisdn(value) || null;
 
 io.on('connection', (socket) => {
   const ip = clientIp(socket);
@@ -189,6 +245,13 @@ io.on('connection', (socket) => {
         message: 'כבר יש חיבור פעיל מהמכשיר הזה.'
       });
     }
+    // אחרון: משתמש לא שורף מהמכסה שלו בגלל עומס בשרת
+    if (tooManyStarts(ip)) {
+      return socket.emit('failed', {
+        code: 'RATE_LIMITED',
+        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
+      });
+    }
 
     let session;
     try {
@@ -204,9 +267,83 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('me:start', async ({ phone } = {}) => {
+    if (boundId) return;
+
+    if (!meConfigured()) {
+      return socket.emit('failed', {
+        code: 'ME_NOT_CONFIGURED',
+        message: 'מסלול זה עדיין לא זמין. בינתיים אפשר להשתמש בסריקת וואטסאפ.'
+      });
+    }
+    // ולידציה לפני כל מונה, כדי שמספר שגוי לא ישרוף מכסה
+    const target = normalizePhone(phone);
+    if (!target) {
+      return socket.emit('failed', { code: 'BAD_PHONE', message: 'המספר לא תקין. בדוק ונסה שוב.' });
+    }
+    if (sessions.atCapacity()) {
+      return socket.emit('failed', {
+        code: 'BUSY',
+        message: 'המערכת עמוסה כרגע. נסה שוב בעוד דקה.'
+      });
+    }
+    if (sessions.countByIp(ip) >= 2) {
+      return socket.emit('failed', {
+        code: 'IP_LIMIT',
+        message: 'כבר יש חיבור פעיל מהמכשיר הזה.'
+      });
+    }
+    if (tooManyStarts(ip)) {
+      return socket.emit('failed', {
+        code: 'RATE_LIMITED',
+        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
+      });
+    }
+    // הגבלה לכל מספר יעד: ה-OTP נשלח לטלפון של מישהו, לא של השולח
+    if (tooManyOtps(target)) {
+      return socket.emit('failed', {
+        code: 'OTP_LIMIT',
+        message: 'נשלחו כבר מספר קודים למספר הזה היום. נסה שוב מחר.'
+      });
+    }
+
+    let session;
+    try {
+      session = sessions.create(() => {}, ip, 'me');
+      session.emit = emitterFor(session);
+      bind(session);
+      socket.emit('session', { sessionId: session.id, source: 'me' });
+      await session.start(target);
+    } catch (err) {
+      logger.error({ err: err?.message }, 'me session start failed');
+      if (session) await sessions.destroy(session.id);
+      socket.emit('failed', { code: 'START_FAILED', message: 'לא הצלחנו להתחיל. נסה שוב.' });
+    }
+  });
+
+  socket.on('me:verify', async ({ code } = {}) => {
+    const session = boundId ? sessions.get(boundId) : null;
+    if (!session || session.source !== 'me') return;
+    try {
+      await session.verify(code);
+    } catch (err) {
+      logger.error({ err: err?.message }, 'me verify failed');
+      socket.emit('failed', { code: 'VERIFY_FAILED', message: 'האימות נכשל. נסה שוב.' });
+      // לא משאירים סשן עם טוקן חי תלוי באוויר עד ה-sweeper
+      await sessions.destroy(boundId).catch(() => {});
+      boundId = null;
+    }
+  });
+
   socket.on('done', () => {
     const session = boundId ? sessions.get(boundId) : null;
     if (session?.stats) recordScan(session.stats);
+  });
+
+  /** סיום מקור אחד כדי לפנות מקום למקור השני באותו ביקור */
+  socket.on('release', async () => {
+    if (boundId) await sessions.destroy(boundId);
+    boundId = null;
   });
 
   socket.on('end', async () => {

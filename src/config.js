@@ -17,8 +17,10 @@ export const config = {
   env: process.env.NODE_ENV || 'production',
   port: int(process.env.PORT, 8080),
 
-  // Railway/פרוקסי: מספר שכבות הפרוקסי שסומכים עליהן לצורך זיהוי IP
-  trustProxy: int(process.env.TRUST_PROXY, 1),
+  // מספר שכבות הפרוקסי שסומכים עליהן לצורך זיהוי IP.
+  // 0 = אין פרוקסי, ואז X-Forwarded-For מתעלמים ממנו לגמרי.
+  // int() מחזיר ברירת מחדל לכל ערך שאינו חיובי, ולכן 0 נקרא בנפרד.
+  trustProxy: process.env.TRUST_PROXY === '0' ? 0 : int(process.env.TRUST_PROXY, 1),
 
   session: {
     // כמה זמן סשן חי בלי פעילות לפני מחיקה מוחלטת מהזיכרון
@@ -50,9 +52,35 @@ export const config = {
     startMax: int(process.env.START_MAX, 12),
     // בקשות API כלליות
     apiWindowMs: int(process.env.API_WINDOW_MS, 60 * 1000),
-    apiMax: int(process.env.API_MAX, 60),
-    // תקרת אנשי קשר בייצוא אחד
-    maxExport: int(process.env.MAX_EXPORT, 3000)
+    apiMax: int(process.env.API_MAX, 60)
+  },
+
+  /**
+   * מסלול "מי שמר אותי" דרך שירות זיהוי מספרים (Me).
+   * כבוי כברירת מחדל: בלי גישה מורשית המסלול לא מוצג בכלל.
+   * ראה src/providers/meProvider.js ו-docs/DECISIONS.md.
+   */
+  me: {
+    enabled: bool(process.env.ME_ENABLED, false),
+    baseUrl: process.env.ME_API_BASE || '',
+    apiKey: process.env.ME_API_KEY || '',
+    apiKeyHeader: process.env.ME_API_KEY_HEADER || 'X-Api-Key',
+    defaultCountry: process.env.ME_DEFAULT_COUNTRY || '972',
+    timeoutMs: int(process.env.ME_TIMEOUT_MS, 15 * 1000),
+    maxResults: int(process.env.ME_MAX_RESULTS, 20000),
+    maxPages: int(process.env.ME_MAX_PAGES, 50),
+    // כמה זמן מחכים שהמשתמש יזין את הקוד
+    otpWaitMs: int(process.env.ME_OTP_WAIT_MS, 5 * 60 * 1000),
+    // תקרת ניסיונות קוד לפני שהסשן נסגר
+    maxCodeAttempts: int(process.env.ME_MAX_CODE_ATTEMPTS, 5),
+    // כמה קודים מותר לשלוח לאותו מספר יעד ביממה - הגנה מהפצצת SMS
+    maxOtpPerPhone: int(process.env.ME_MAX_OTP_PER_PHONE, 3),
+    paths: {
+      requestOtp: process.env.ME_PATH_REQUEST_OTP || 'auth/otp',
+      verifyOtp: process.env.ME_PATH_VERIFY_OTP || 'auth/verify',
+      savedMe: process.env.ME_PATH_SAVED_ME || 'me/saved-by',
+      revoke: process.env.ME_PATH_REVOKE || 'auth/revoke'
+    }
   },
 
   // טלמטריה אנונימית (ספירות בלבד, בלי מספרים ובלי שמות). כבוי כברירת מחדל.

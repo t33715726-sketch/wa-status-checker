@@ -4,18 +4,18 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>מי לא רואה את הסטטוס שלי?</title>
-<meta name="description" content="גלה מי שמר את המספר שלך ולא רואה את הסטטוס שלך - והוסף את כולם בלחיצה אחת. בלי שמירת נתונים, בלי סיסמאות." />
+<meta name="description" content="גלה מי מתכתב איתך ולא שמור אצלך - ולכן לא רואה את הסטטוס שלך. בלי לגעת באנשי הקשר הקיימים." />
 <meta name="theme-color" content="#0b141a" />
 <meta name="robots" content="index,follow" />
 <meta property="og:type" content="website" />
 <meta property="og:title" content="מי לא רואה את הסטטוס שלי?" />
-<meta property="og:description" content="גלה מי שמר את המספר שלך ולא רואה את הסטטוס שלך - והוסף את כולם בלחיצה אחת." />
+<meta property="og:description" content="גלה מי מתכתב איתך ולא שמור אצלך - ולכן לא רואה את הסטטוס שלך." />
 <meta property="og:locale" content="he_IL" />
-<meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+
 <a class="skip" href="#main">דלג לתוכן</a>
 
 <header class="topbar">
@@ -30,27 +30,146 @@
 
 <main id="main" class="wrap">
 
-  <!-- ========== שלב 1: פתיחה ========== -->
+  <!-- ========== פתיחה ========== -->
   <section id="viewIntro" class="view">
-    <h1 class="hero-title">מי שמר אותך <span class="hl">ולא רואה</span> את הסטטוס שלך?</h1>
+    <h1 class="hero-title">מי מתכתב איתך <span class="hl">ולא רואה</span> את הסטטוס שלך?</h1>
     <p class="hero-sub">
-      הסטטוס שלך מוצג רק למי ש<strong>אתה</strong> שמרת ביומן הטלפון. מי שמכיר אותך, מתכתב איתך
-      ולא שמור אצלך - פשוט לא רואה כלום. הכלי מוצא בדיוק את האנשים האלה ומייצר קובץ אחד
-      שמוסיף את כולם בבת אחת.
+      הסטטוס שלך מוצג רק למי ש<strong>אתה</strong> שמרת ביומן הטלפון. מי שמתכתב איתך
+      ואינו שמור אצלך - לא רואה כלום. הכלי מוצא בדיוק את האנשים האלה ומכין קובץ
+      שמוסיף רק אותם.
     </p>
+
+    <div class="card safety">
+      <h2 class="card-title">הכלל החשוב ביותר כאן</h2>
+      <p class="safety-lead">
+        הקובץ שתקבל <strong>לעולם לא נוגע באיש קשר קיים</strong>. לפני שמישהו נכנס אליו,
+        המספר שלו נבדק מול ספר הטלפונים שלך - ואם הוא כבר שמור, הוא נזרק החוצה.
+      </p>
+      <p class="hint">
+        לכן הצעד הראשון הוא להעלות את אנשי הקשר שלך. הקובץ נקרא בדפדפן שלך בלבד,
+        לא עולה לשרת ולא נשמר בשום מקום.
+      </p>
+    </div>
 
     <div class="card promise">
       <h2 class="card-title">מה קורה עם המידע שלך</h2>
       <ul class="checks">
-        <li>החיבור נעשה מול וואטסאפ בלבד, בדיוק כמו וואטסאפ ווב.</li>
-        <li>שום דבר לא נשמר בדיסק ולא במסד נתונים - הכול בזיכרון זמני.</li>
-        <li>ברגע שהרשימה מוכנה, אנחנו מנתקים את עצמנו אוטומטית.</li>
-        <li>הודעות לא נקראות, לא נשלחות הודעות בשמך.</li>
-        <li>סגירת הדף מוחקת הכול מיידית.</li>
+        <li>ספר הטלפונים שלך לא עוזב את המכשיר.</li>
+        <li>החיבור לוואטסאפ זהה לוואטסאפ ווב, ונמחק בסיום אוטומטית.</li>
+        <li>שום דבר לא נשמר בדיסק ולא במסד נתונים.</li>
+        <li>הודעות לא נקראות, ולא נשלחות הודעות בשמך.</li>
       </ul>
     </div>
 
-    <div class="choices">
+    <button type="button" id="btnBegin" class="btn btn-primary btn-lg">בוא נתחיל</button>
+  </section>
+
+  <!-- ========== שלב 1: אנשי הקשר ========== -->
+  <section id="viewContacts" class="view hidden">
+    <p class="step-mark">שלב 1 מתוך 3</p>
+    <h2 class="view-title">העלה את אנשי הקשר שלך</h2>
+
+    <div class="card">
+      <h3 class="card-title">איך מוציאים את הקובץ</h3>
+      <ol class="steps steps-wide">
+        <li>היכנס ל-<strong>contacts.google.com</strong> (בחשבון שמחובר לטלפון)</li>
+        <li>בתפריט הצד: <strong>ייצוא</strong></li>
+        <li>בחר <strong>"כל אנשי הקשר"</strong> ופורמט <strong>vCard</strong></li>
+        <li>לחץ ייצוא, ובחר כאן את הקובץ שירד</li>
+      </ol>
+      <p class="hint">גם ייצוא CSV של גוגל עובד. גם קובץ vcf מהטלפון עובד.</p>
+    </div>
+
+    <label class="dropzone" for="contactsFile">
+      <input id="contactsFile" type="file" accept=".vcf,.csv,.txt,text/vcard,text/csv" />
+      <span class="dropzone-title">בחר את קובץ אנשי הקשר</span>
+      <span class="dropzone-note">‎.vcf או ‎.csv</span>
+    </label>
+
+    <div id="contactsOk" class="card ok-card hidden">
+      <p class="ok-line">נקראו <strong id="contactsCount">0</strong> מספרים מספר הטלפונים שלך.</p>
+      <p class="hint">אף אחד מהם לא ייכנס לקובץ שתקבל בסוף.</p>
+      <button type="button" id="btnToConnect" class="btn btn-primary btn-lg">המשך</button>
+    </div>
+
+    <p id="contactsErr" class="err-line hidden"></p>
+    <button type="button" class="btn btn-quiet" data-action="restart">חזרה</button>
+  </section>
+
+  <!-- ========== שלב 2: מאיפה מביאים את הרשימה ========== -->
+  <section id="viewSource" class="view hidden">
+    <p class="step-mark">שלב 2 מתוך 3</p>
+    <h2 class="view-title">מאיפה נביא את הרשימה?</h2>
+    <p class="hint">
+      שתי השאלות דומות אבל לא זהות. אפשר להריץ את שתיהן ולמזג לקובץ אחד.
+    </p>
+
+    <div class="sources">
+      <button type="button" id="srcMe" class="source-card">
+        <span class="source-title">מי שמר אותי</span>
+        <span class="source-q">התשובה המלאה — כולל אנשים שמעולם לא כתבו לך</span>
+        <span class="source-how">מספר טלפון וקוד חד-פעמי</span>
+        <span class="source-state" id="srcMeState"></span>
+      </button>
+
+      <button type="button" id="srcWa" class="source-card">
+        <span class="source-title">מי מתכתב איתי</span>
+        <span class="source-q">מי שיש איתך שיחה ואינו שמור אצלך</span>
+        <span class="source-how">חיבור וואטסאפ, כמו וואטסאפ ווב</span>
+        <span class="source-state ok">זמין</span>
+      </button>
+    </div>
+
+    <p id="srcNote" class="err-line hidden"></p>
+
+    <div id="mergeNote" class="card ok-card hidden">
+      <p class="ok-line">כבר אספנו <strong id="mergeCount">0</strong> אנשים מהמקור הקודם.</p>
+      <p class="hint">מה שתאסוף עכשיו יתמזג איתם לקובץ אחד, בלי כפילויות.</p>
+      <button type="button" id="btnToResults" class="btn btn-ghost btn-lg">דלג — קח אותי לרשימה</button>
+    </div>
+
+    <button type="button" class="btn btn-quiet" data-action="restart">חזרה</button>
+  </section>
+
+  <!-- ========== שלב 3א: מי שמר אותי ========== -->
+  <section id="viewMe" class="view hidden">
+    <p class="step-mark">שלב 3 מתוך 3</p>
+    <h2 class="view-title">מי שמר את המספר שלך</h2>
+
+    <form id="mePhoneForm" class="phone-form" autocomplete="off">
+      <label class="label" for="mePhone">מספר הטלפון שלך</label>
+      <div class="phone-row">
+        <input id="mePhone" name="mePhone" class="input" type="tel" inputmode="tel"
+               placeholder="050-000-0000" maxlength="20" required />
+        <button type="submit" class="btn btn-primary">שליחת קוד</button>
+      </div>
+      <p class="hint">הקוד מגיע אליך בוואטסאפ. הוא חד-פעמי ולא נשמר אצלנו.</p>
+    </form>
+
+    <form id="meCodeForm" class="phone-form hidden" autocomplete="off">
+      <label class="label" for="meCode">הקוד שקיבלת ב-<span id="meSentTo" dir="ltr"></span></label>
+      <div class="phone-row">
+        <input id="meCode" name="meCode" class="input" type="text" inputmode="numeric"
+               dir="ltr" placeholder="123456" maxlength="8" required />
+        <button type="submit" class="btn btn-primary">אישור</button>
+      </div>
+      <p id="meCodeErr" class="err-line hidden"></p>
+    </form>
+
+    <div id="meWait" class="card center hidden">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="meWaitText">בודקים...</p>
+    </div>
+
+    <button type="button" class="btn btn-quiet" data-action="restart">ביטול</button>
+  </section>
+
+  <!-- ========== שלב 3ב: חיבור וואטסאפ ========== -->
+  <section id="viewConnect" class="view hidden">
+    <p class="step-mark">שלב 3 מתוך 3</p>
+    <h2 class="view-title">חיבור לוואטסאפ</h2>
+
+    <div id="chooser" class="choices">
       <button type="button" id="btnQr" class="btn btn-primary btn-lg">
         <span class="btn-title">סריקת קוד QR</span>
         <span class="btn-note">כשהדף פתוח במחשב</span>
@@ -68,13 +187,7 @@
                placeholder="050-000-0000" maxlength="20" required />
         <button type="submit" class="btn btn-primary">קבלת קוד</button>
       </div>
-      <p class="hint">נשלח קוד בן 8 תווים שתזין בוואטסאפ במכשיר שלך.</p>
     </form>
-  </section>
-
-  <!-- ========== שלב 2: חיבור ========== -->
-  <section id="viewConnect" class="view hidden">
-    <h2 class="view-title">חיבור לוואטסאפ</h2>
 
     <div id="qrBox" class="card center hidden">
       <img id="qrImg" class="qr" alt="קוד QR לסריקה" width="260" height="260" />
@@ -89,14 +202,13 @@
       <p class="pair-label">הזן את הקוד הזה בוואטסאפ</p>
       <div id="pairCode" class="pair-code" dir="ltr">--------</div>
       <ol class="steps">
-        <li>פתח וואטסאפ בטלפון</li>
-        <li>הגדרות ← <strong>מכשירים מקושרים</strong></li>
+        <li>וואטסאפ ← הגדרות ← <strong>מכשירים מקושרים</strong></li>
         <li>קישור מכשיר ← <strong>קישור עם מספר טלפון</strong></li>
         <li>הזן את הקוד למעלה</li>
       </ol>
     </div>
 
-    <div id="waitBox" class="card center">
+    <div id="waitBox" class="card center hidden">
       <div class="spinner" aria-hidden="true"></div>
       <p id="waitText">מתחברים...</p>
     </div>
@@ -104,29 +216,35 @@
     <button type="button" class="btn btn-quiet" data-action="restart">ביטול</button>
   </section>
 
-  <!-- ========== שלב 3: סנכרון ========== -->
+  <!-- ========== סנכרון ========== -->
   <section id="viewSync" class="view hidden">
-    <h2 class="view-title">סורקים את אנשי הקשר</h2>
+    <h2 class="view-title">סורקים</h2>
     <div class="card">
       <div class="progress"><div id="bar" class="bar"></div></div>
       <div class="counters">
         <div class="counter"><span id="cContacts">0</span><small>אנשי קשר</small></div>
         <div class="counter"><span id="cChats">0</span><small>שיחות</small></div>
       </div>
-      <p class="hint center">זה לוקח בדרך כלל 10-40 שניות. אל תסגור את הדף.</p>
+      <p class="hint center">בדרך כלל 10-40 שניות. אל תסגור את הדף.</p>
     </div>
   </section>
 
-  <!-- ========== שלב 4: תוצאות ========== -->
+  <!-- ========== תוצאות ========== -->
   <section id="viewResults" class="view hidden">
-    <div class="result-head">
-      <h2 class="view-title">נמצאו <span id="gapCount">0</span> אנשים שלא רואים את הסטטוס שלך</h2>
-      <p class="hint" id="resultSub"></p>
-      <p class="badge-ok">התנתקנו מוואטסאפ. הרשימה נשארת אצלך בדף בלבד.</p>
+    <h2 class="view-title">נמצאו <span id="gapCount">0</span> אנשים שלא רואים את הסטטוס שלך</h2>
+    <p class="hint" id="resultSub"></p>
+    <p class="badge-ok">התנתקנו מוואטסאפ. הרשימה נמצאת רק בדף הזה.</p>
+
+    <div id="filterNote" class="card ok-card hidden">
+      <p class="ok-line">
+        <strong id="filteredCount">0</strong> מהתוצאות כבר שמורים אצלך והוסרו מהרשימה.
+      </p>
+      <p class="hint">הם לא יופיעו בקובץ, ולכן שום איש קשר קיים שלך לא ישתנה.</p>
     </div>
 
     <div class="toolbar">
       <div class="tabs" role="tablist">
+        <button type="button" class="tab" data-tab="me" role="tab">שמרו אותך</button>
         <button type="button" class="tab is-active" data-tab="chat" role="tab">מתכתבים איתך</button>
         <button type="button" class="tab" data-tab="contact" role="tab">מקבוצות משותפות</button>
       </div>
@@ -142,18 +260,25 @@
     </div>
 
     <ul id="list" class="list"></ul>
-    <p id="emptyMsg" class="hint center hidden">אין כאן אף אחד. מצוין.</p>
+    <p id="emptyMsg" class="hint center hidden">אין כאן אף אחד.</p>
 
     <div class="card export">
-      <label class="label" for="prefix">תחילית לשם (מומלץ - כדי למצוא ולמחוק אותם בקלות)</label>
+      <label class="label" for="prefix">תחילית לשם (כדי שתוכל למצוא ולמחוק אותם בקלות)</label>
       <input id="prefix" class="input" type="text" maxlength="20" value="סטטוס" />
       <button type="button" id="btnExport" class="btn btn-primary btn-lg" disabled>
         הורדת קובץ אנשי קשר
       </button>
       <p class="hint">
-        הקובץ נפתח בטלפון ומייבא את כולם ליומן הטלפון. באייפון: שיתוף ← אנשי קשר.
-        באנדרואיד: פתיחה עם אנשי קשר ← ייבוא.
+        באייפון: שיתוף ← אנשי קשר. באנדרואיד: פתיחה עם אנשי קשר ← ייבוא.
       </p>
+      <p class="hint undo-tip">
+        אם משהו בכל זאת לא נראה לך אחרי הייבוא: contacts.google.com ← גלגל השיניים ←
+        <strong>ביטול שינויים</strong> מחזיר את ספר הטלפונים אחורה עד 30 יום.
+      </p>
+      <button type="button" id="btnAddSource" class="btn btn-ghost btn-lg hidden">
+        <span class="btn-title">להוסיף גם את המקור השני</span>
+        <span class="btn-note">התוצאות יתמזגו לקובץ אחד</span>
+      </button>
       <button type="button" class="btn btn-quiet" data-action="restart">סיום ומחיקה</button>
     </div>
   </section>
@@ -174,6 +299,7 @@
 </footer>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="/contacts.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
