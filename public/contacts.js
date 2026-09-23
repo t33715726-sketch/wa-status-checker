@@ -35,16 +35,38 @@
       if (ch >= '0' && ch <= '9') { digits += 1; continue; }
       if (digits < 7) continue;
 
-      if (ch === ';' || ch === '#' || ch === '|' || ch === '(') return i;
-      if (ch === ',' && value.charAt(i + 1) === ',') return i;
+      if (ch === ';' || ch === '#' || ch === '|' || ch === '(' || ch === ',') return i;
       if ((ch === 'x' || ch === 'X') && /^\s*\d/.test(value.slice(i + 1))) return i;
       if ((ch === 'e' || ch === 'E') && /^xt\.?\s*\d/i.test(value.slice(i + 1))) return i;
     }
     return -1;
   }
 
+  /**
+   * ספרות שאינן ASCII (ערביות-הודיות, דוואנגרי, פרסיות) ל-ASCII.
+   * בלי זה `\D` מוחק אותן, השדה מחזיר אפס ספרות, והאדם נחשב
+   * ללא-שמור - כלומר נכתב לקובץ ונדרס.
+   */
+  function asciiDigits(value) {
+    return String(value).replace(/[\u0660-\u0669\u06f0-\u06f9\u0966-\u096f]/g, function (d) {
+      var c = d.charCodeAt(0);
+      var base = c >= 0x0966 ? 0x0966 : c >= 0x06f0 ? 0x06f0 : 0x0660;
+      return String(c - base);
+    });
+  }
+
+  /**
+   * התווים הלגיטימיים במספר טלפון: ספרות ומפרידי תצוגה בלבד.
+   *
+   * כולל את תווי הבקרה הדו-כיווניים (U+200E/200F, U+202A-202E,
+   * U+2066-2069). הם בלתי נראים, מערכות עבריות וערביות עוטפות בהם
+   * מספרים כדי שיוצגו משמאל לימין, והם מופיעים ב-411 מתוך 7,486
+   * השדות בייצוא אמיתי. הם לא חלק מהמספר אבל גם לא סימן לתקלה.
+   */
+  var PHONE_CHARS = /^[+0-9\s()\-.\u00a0\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/;
+
   function phoneKeys(raw) {
-    var value = String(raw || '');
+    var value = asciiDigits(String(raw || ''));
 
     var cut = extensionStart(value);
     if (cut > 0) value = value.slice(0, cut);
@@ -113,7 +135,8 @@
       // שדה אחד עשוי להחזיק כמה מספרים
       var parts = m[1].split(/:::|\//);
       for (var i = 0; i < parts.length; i++) {
-        if (parts[i].replace(/\D/g, '').length >= 6) out.push(parts[i]);
+        // הנרמול לפני הספירה: ספרות שאינן ASCII נמחקות על ידי \D
+        if (asciiDigits(parts[i]).replace(/\D/g, '').length >= 6) out.push(parts[i]);
       }
     }
     return out;
@@ -174,9 +197,9 @@
       for (var c = 0; c < scan.length; c++) {
         var val = cells[scan[c]];
         if (!val) continue;
-        if (!cols.length && !/^[\s+\-()0-9]{7,25}$/.test(val)) continue;
+        if (!cols.length && !/^[\s+\-()0-9]{7,25}$/.test(asciiDigits(val))) continue;
         // גוגל מפרידה כמה מספרים באותו תא ב-":::"
-        var parts = String(val).split(/:::|;/);
+        var parts = String(val).split(/:::|;|\//);
         for (var p = 0; p < parts.length; p++) out.push(parts[p]);
       }
     }
@@ -184,8 +207,30 @@
   }
 
   /**
+   * האם הבנו את השדה במלואו.
+   *
+   * מצב הכשל שהפיל אותנו פעמיים אינו "לא הופק מפתח" אלא "הופק מפתח
+   * שגוי": תו לא צפוי בתוך המספר מזיז את הספרות, המפתח לא תואם,
+   * והאדם - ששמור אצל המשתמש - נכתב לקובץ ונדרס. שער שסופר שדות
+   * בלי מפתח עיוור לזה לגמרי.
+   *
+   * לכן בודקים את מה שנשמר אחרי קילוף השלוחה: אם נשאר בו תו שאינו
+   * ספרה או מפריד תצוגה, לא הבנו את השדה ואסור להמשיך.
+   *
+   * שדה עם פחות מ-6 ספרות אינו מספר (מספר שירות, "1-800-FLOWERS",
+   * תא ריק) ואינו נספר ככשל.
+   */
+  function understood(raw) {
+    var value = asciiDigits(String(raw || ''));
+    if (value.replace(/\D/g, '').length < 6) return true;
+    var cut = extensionStart(value);
+    var kept = cut > 0 ? value.slice(0, cut) : value;
+    return PHONE_CHARS.test(kept);
+  }
+
+  /**
    * @param {string} text תוכן קובץ הייצוא
-   * @returns {{set: Set<string>, numbers: number}}
+   * @returns {{set: Set<string>, numbers: number, unparsed: number, telLines: number, cards: number}}
    */
   function parseContactsFile(text) {
     var body = unfold(text);
@@ -201,11 +246,8 @@
       if (keys.length) {
         withKeys += 1;
         for (var k = 0; k < keys.length; k++) set.add(keys[k]);
-      } else if (String(raw[i]).replace(/\D/g, '').length >= 7) {
-        // שדה שנראה כמו מספר אמיתי ולא הניב מפתח = כשל פרסור.
-        // מספר שירות קצר (100, *2800) אינו נספר כאן.
-        unparsed += 1;
       }
+      if (!understood(raw[i])) unparsed += 1;
     }
 
     return {
@@ -215,7 +257,8 @@
       // מהשורות עובר אותו ברווח, ושמונה אנשים נדרסים בשקט. לכן
       // `unparsed` הוא רצפה מוחלטת - אפילו שדה אחד כזה הוא עצירה.
       unparsed: unparsed,
-      telLines: isVcard ? countTelLines(body) : 0,
+      // גם ל-CSV יש שער: בלי מונה שדות השער האחוזי מדולג לגמרי
+      telLines: isVcard ? countTelLines(body) : raw.length,
       cards: isVcard ? (body.match(/BEGIN:VCARD/g) || []).length : 0
     };
   }
@@ -309,6 +352,7 @@
   window.ContactBook = {
     phoneKeys: phoneKeys,
     unfold: unfold,
+    understood: understood,
     isSaved: isSaved,
     parseContactsFile: parseContactsFile,
     buildVcf: buildVcf,

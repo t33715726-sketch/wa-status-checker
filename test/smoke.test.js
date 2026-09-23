@@ -214,6 +214,52 @@ t('שדה עם 7+ ספרות תמיד מניב מפתח — assertion גורף',
   });
 });
 
+t('פסיק בודד — תו ההשהיה של אייפון — נקלף', () => {
+  // ",,3" טופל, "," בודד לא. אותו נזק בדיוק, בתו אחר.
+  [['0501234567,,3', '+972501234567'],
+   ['0501234567,3', '+972501234567'],
+   ['+1-646-207-6164,3', '+16462076164'],
+   ['050-1234567,1234', '+972501234567']].forEach(([inBook, fromWa]) => {
+    const { set } = parseContactsFile(
+      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${inBook}\r\nEND:VCARD`);
+    assert.equal(isSaved(set, fromWa), true, inBook);
+  });
+});
+
+t('ספרות שאינן ASCII מנורמלות', () => {
+  const { set, numbers } = parseContactsFile(
+    'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:\u0660\u0665\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\r\nEND:VCARD');
+  assert.equal(numbers, 1, 'ספרות ערביות-הודיות הן מספר, לא זבל');
+  assert.equal(isSaved(set, '+972501234567'), true);
+});
+
+t('השער יורה על קלט שלא הובן — ולא רק על היעדר מפתח', () => {
+  // הבדיקה שהייתה חסרה. בלעדיה השער יכול להיות קוד מת בלי שאיש ישים לב.
+  // מצב הכשל האמיתי הוא מפתח שגוי, לא מפתח חסר.
+  ['0501234567~3', '0501234567 abc', '050123456 7 &', '0501234567\u2022'].forEach((bad) => {
+    const { unparsed } = parseContactsFile(
+      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${bad}\r\nEND:VCARD`);
+    assert.ok(unparsed > 0, `השער חייב לירות על: ${bad}`);
+  });
+});
+
+t('השער לא יורה על ייצוא לגיטימי', () => {
+  ['+972501234567', '050-123-4567', '+1 (646) 207-6164', '050-123-4567 x12',
+   '0501234567,3', '1-800-FLOWERS', '100', '', '+41 44 668 18 00',
+   // תווי בקרה דו-כיווניים: בלתי נראים, ומופיעים ב-411 מתוך 7,486
+   // השדות בייצוא אמיתי של משתמש עברית
+   '\u202a+972-50-123-4567\u202c', '\u200f050-123-4567'].forEach((ok) => {
+    const { unparsed } = parseContactsFile(
+      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${ok}\r\nEND:VCARD`);
+    assert.equal(unparsed, 0, `חסימת שווא על: ${ok}`);
+  });
+});
+
+t('גם ל-CSV יש שער שלמות', () => {
+  const { telLines } = parseContactsFile('Name,Phone 1 - Value\nדני,"0501234567"');
+  assert.ok(telLines > 0, 'בלי מונה שדות השער האחוזי מדולג ב-CSV');
+});
+
 t('מספר שירות קצר לא נספר ככשל פרסור', () => {
   const { unparsed, numbers } = parseContactsFile(
     'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:100\r\nEND:VCARD');
