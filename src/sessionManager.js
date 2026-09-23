@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { WaSession } from './waSession.js';
+import { MeSession } from './meSession.js';
 
 /**
  * מנהל סשנים בזיכרון: תקרת מקביליות, פקיעה אוטומטית וניקוי ודאי.
@@ -22,8 +23,13 @@ class SessionManager {
     return this.sessions.size >= config.session.maxConcurrent;
   }
 
-  create(emit, ip) {
-    const session = new WaSession(emit);
+  /**
+   * @param {Function} emit
+   * @param {string} ip
+   * @param {'wa'|'me'} kind איזה מקור נתונים הסשן הזה מייצג
+   */
+  create(emit, ip, kind = 'wa') {
+    const session = kind === 'me' ? new MeSession(emit) : new WaSession(emit);
     this.sessions.set(session.id, {
       session,
       ip,

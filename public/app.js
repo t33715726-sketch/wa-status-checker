@@ -5,7 +5,12 @@
    הכלל שמחזיק את כל הקובץ הזה:
    ספר הטלפונים של המשתמש הוא מקור האמת היחיד לשאלה "מי כבר שמור אצלי".
    הוא נקרא כאן, נשאר כאן, ומסנן גם את הרשימה שמוצגת וגם את הקובץ שנבנה.
-   בלי ספר טלפונים טעון - אי אפשר להתחיל סריקה בכלל. */
+   בלי ספר טלפונים טעון - אי אפשר להתחיל בכלל.
+
+   שני מקורות, פלט אחד:
+     me   - מי שמר את המספר שלך (התשובה המלאה)
+     wa   - מי מתכתב איתך ואינו שמור אצלך (קירוב, בלי תלות בשירות חיצוני)
+   שניהם מתמזגים לרשימה אחת לפי מספר מנורמל, בלי כפילויות. */
 (function () {
   'use strict';
 
@@ -13,10 +18,14 @@
   var socket = null;
   var sessionId = null;
 
-  /** כל התוצאות מהשרת, אחרי סינון מול ספר הטלפונים */
+  /** הרשימה המאוחדת מכל המקורות, אחרי סינון מול ספר הטלפונים */
   var items = [];
+  /** נבחרים לפי מפתח יציב ולא לפי אינדקס - אינדקסים מתנגשים בין מקורות */
   var selected = new Set();
   var activeTab = 'chat';
+  var removedTotal = 0;
+  var sourcesDone = {};
+  var meAvailable = false;
 
   /** ספר הטלפונים של המשתמש. null = טרם נטען. */
   var savedSet = null;
@@ -27,6 +36,8 @@
   var views = {
     intro: $('viewIntro'),
     contacts: $('viewContacts'),
+    source: $('viewSource'),
+    me: $('viewMe'),
     connect: $('viewConnect'),
     sync: $('viewSync'),
     results: $('viewResults'),
@@ -43,6 +54,12 @@
   function fail(message) {
     $('errText').textContent = message;
     show('error');
+  }
+
+  /** מפתח יציב לזיהוי אדם בין המקורות */
+  function keyOf(item) {
+    var keys = window.ContactBook.phoneKeys(item.phone);
+    return keys.length ? keys[0] : String(item.phone || '');
   }
 
   /* ---------------- ערכת נושא ---------------- */
@@ -115,7 +132,7 @@
 
   $('btnToConnect').addEventListener('click', function () {
     if (!savedSet) return;
-    show('connect');
+    show('source');
   });
 
   /** שער יחיד: שום דבר לא מתחיל בלי ספר טלפונים טעון */
@@ -127,7 +144,67 @@
   }
 
   /* ============================================================
-     שלב 2: חיבור וואטסאפ
+     שלב 2: בחירת מקור
+     ============================================================ */
+
+  // המסלול של "מי שמר אותי" תלוי בשירות חיצוני. שואלים את השרת אם הוא
+  // מחובר, ולא מציעים למשתמש מסלול שייכשל.
+  fetch('/api/sources')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      meAvailable = Boolean(d && d.me);
+      var card = $('srcMe');
+      var state = $('srcMeState');
+      if (meAvailable) {
+        state.textContent = 'זמין';
+        state.className = 'source-state ok';
+      } else {
+        card.classList.add('is-off');
+        state.textContent = 'עדיין לא מחובר';
+        state.className = 'source-state off';
+      }
+    })
+    .catch(function () {
+      $('srcMe').classList.add('is-off');
+      $('srcMeState').textContent = 'עדיין לא מחובר';
+      $('srcMeState').className = 'source-state off';
+    });
+
+  $('srcMe').addEventListener('click', function () {
+    if (!requireContacts()) return;
+    if (!meAvailable) {
+      // מסלול שידוע שאינו זמין הוא לא תקלה - לא זורקים את המשתמש למסך שגיאה
+      var note = $('srcNote');
+      note.textContent =
+        'מסלול "מי שמר אותי" עדיין לא מחובר לשירות זיהוי המספרים. בינתיים אפשר להריץ את סריקת וואטסאפ.';
+      note.classList.remove('hidden');
+      $('srcWa').focus();
+      return;
+    }
+    $('srcNote').classList.add('hidden');
+    $('meCodeForm').classList.add('hidden');
+    $('meWait').classList.add('hidden');
+    $('mePhoneForm').classList.remove('hidden');
+    show('me');
+    $('mePhone').focus();
+  });
+
+  $('srcWa').addEventListener('click', function () {
+    if (!requireContacts()) return;
+    $('qrBox').classList.add('hidden');
+    $('pairBox').classList.add('hidden');
+    $('waitBox').classList.add('hidden');
+    $('phoneForm').classList.add('hidden');
+    $('chooser').classList.remove('hidden');
+    show('connect');
+  });
+
+  $('btnToResults').addEventListener('click', function () {
+    if (items.length) show('results');
+  });
+
+  /* ============================================================
+     סוקט - משותף לשני המקורות
      ============================================================ */
 
   function connectSocket() {
@@ -137,6 +214,7 @@
     socket.on('session', function (d) { sessionId = d.sessionId; });
 
     socket.on('state', function (d) {
+      /* --- מצבי וואטסאפ --- */
       if (d.state === 'qr') {
         show('connect');
         $('qrImg').src = d.qr;
@@ -151,6 +229,32 @@
         $('waitBox').classList.add('hidden');
       } else if (d.state === 'syncing') {
         show('sync');
+
+      /* --- מצבי Me --- */
+      } else if (d.state === 'otp') {
+        show('me');
+        $('mePhoneForm').classList.add('hidden');
+        $('meWait').classList.add('hidden');
+        $('meCodeForm').classList.remove('hidden');
+        $('meSentTo').textContent = d.sentTo || '';
+        var err = $('meCodeErr');
+        if (d.error) {
+          err.textContent = d.error + (d.attemptsLeft != null ? ' נשארו ' + d.attemptsLeft + ' ניסיונות.' : '');
+          err.classList.remove('hidden');
+        } else {
+          err.classList.add('hidden');
+        }
+        $('meCode').value = '';
+        $('meCode').focus();
+      } else if (d.state === 'verifying' || d.state === 'fetching') {
+        show('me');
+        $('mePhoneForm').classList.add('hidden');
+        $('meCodeForm').classList.add('hidden');
+        $('meWait').classList.remove('hidden');
+        $('meWaitText').textContent =
+          d.state === 'verifying' ? 'מאמתים את הקוד...' : 'מביאים את הרשימה...';
+
+      /* --- משותף --- */
       } else if (d.state === 'done') {
         renderResults(d);
         if (socket) socket.emit('done');
@@ -195,6 +299,35 @@
     return c.length === 8 ? c.slice(0, 4) + '-' + c.slice(4) : c;
   }
 
+  /* ============================================================
+     שלב 3א: מי שמר אותי
+     ============================================================ */
+
+  $('mePhoneForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!requireContacts()) return;
+    var v = $('mePhone').value.replace(/\D/g, '');
+    if (v.length < 8) { $('mePhone').focus(); return; }
+
+    $('mePhoneForm').classList.add('hidden');
+    $('meCodeForm').classList.add('hidden');
+    $('meWait').classList.remove('hidden');
+    $('meWaitText').textContent = 'שולחים קוד...';
+
+    connectSocket().emit('me:start', { phone: v });
+  });
+
+  $('meCodeForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = $('meCode').value.replace(/\D/g, '');
+    if (v.length < 4) { $('meCode').focus(); return; }
+    connectSocket().emit('me:verify', { code: v });
+  });
+
+  /* ============================================================
+     שלב 3ב: חיבור וואטסאפ
+     ============================================================ */
+
   function start(phone) {
     if (!requireContacts()) return;
     show('connect');
@@ -221,34 +354,53 @@
   });
 
   /* ============================================================
-     תוצאות
+     תוצאות - מיזוג שני המקורות
      ============================================================ */
 
   function renderResults(d) {
     var raw = Array.isArray(d.items) ? d.items : [];
+    var source = (d.stats && d.stats.source) || (raw[0] && raw[0].source === 'me' ? 'me' : 'wa');
+    sourcesDone[source === 'me' ? 'me' : 'wa'] = true;
 
-    // הסינון האמיתי. השרת לא יודע מי שמור אצל המשתמש, ולכן הוא שולח
-    // את כל מי שמצא. כאן מורידים את מי שכבר קיים בספר הטלפונים.
-    var removed = 0;
-    items = raw.filter(function (it) {
+    // מפתחות שכבר ברשימה - מונע כפילות כשאותו אדם מגיע משני המקורות
+    var have = new Set();
+    items.forEach(function (it) { have.add(it.key); });
+
+    raw.forEach(function (it) {
+      // הסינון האמיתי. שום מקור לא יודע מי שמור אצל המשתמש - רק ספר
+      // הטלפונים שלו יודע, והוא נמצא כאן.
       if (savedSet && window.ContactBook.isSaved(savedSet, it.phone)) {
-        removed += 1;
-        return false;
+        removedTotal += 1;
+        return;
       }
-      return true;
+      var key = keyOf(it);
+      if (have.has(key)) {
+        // אותו אדם משני המקורות: משדרגים שם חסר ומסמנים ששמר אותך
+        var prev = items.find(function (x) { return x.key === key; });
+        if (prev) {
+          if (!prev.pushName && it.pushName) prev.pushName = it.pushName;
+          if (it.savedYou) prev.savedYou = true;
+          if (it.wroteToYou) prev.wroteToYou = true;
+        }
+        return;
+      }
+      have.add(key);
+      it.key = key;
+      items.push(it);
     });
-
-    selected = new Set();
 
     var s = d.stats || {};
     $('gapCount').textContent = String(items.length);
+
+    var parts = [];
+    if (sourcesDone.me) parts.push('מ-Me: מי ששמר אותך');
+    if (sourcesDone.wa) parts.push('מוואטסאפ: ' + (s.chats || 0) + ' שיחות');
     $('resultSub').textContent =
-      'נסרקו ' + (s.chats || 0) + ' שיחות, והוצלבו מול ' + savedCount +
-      ' מספרים מספר הטלפונים שלך.';
+      parts.join(' · ') + '. הוצלב מול ' + savedCount + ' מספרים מספר הטלפונים שלך.';
 
     var note = $('filterNote');
-    if (removed > 0) {
-      $('filteredCount').textContent = String(removed);
+    if (removedTotal > 0) {
+      $('filteredCount').textContent = String(removedTotal);
       note.classList.remove('hidden');
     } else {
       note.classList.add('hidden');
@@ -256,13 +408,22 @@
 
     $('bar').style.width = '100%';
 
-    var chatGap = items.filter(function (it) { return it.source === 'chat'; }).length;
-    var groupGap = items.length - chatGap;
-    activeTab = chatGap > 0 || groupGap === 0 ? 'chat' : 'contact';
+    // כפתור "להוסיף גם את המקור השני" רק אם באמת יש מקור שני זמין
+    var canAdd = (!sourcesDone.me && meAvailable) || !sourcesDone.wa;
+    $('btnAddSource').classList.toggle('hidden', !canAdd);
 
     syncTabs();
     renderList();
     show('results');
+  }
+
+  /** אילו לשוניות בכלל יש בהן משהו */
+  function tabCounts() {
+    var c = { me: 0, chat: 0, contact: 0 };
+    items.forEach(function (it) {
+      if (c[it.source] !== undefined) c[it.source] += 1;
+    });
+    return c;
   }
 
   function visible() {
@@ -296,9 +457,9 @@
 
       var cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.checked = selected.has(it.i);
+      cb.checked = selected.has(it.key);
       cb.addEventListener('change', function () {
-        if (cb.checked) selected.add(it.i); else selected.delete(it.i);
+        if (cb.checked) selected.add(it.key); else selected.delete(it.key);
         updateCount();
       });
 
@@ -314,7 +475,7 @@
       var sub = document.createElement('div');
       sub.className = 'row-sub';
       // בלי שם תצוגה אין טעם להציג את המספר פעמיים
-      sub.textContent = it.pushName ? it.display : 'ללא שם בוואטסאפ';
+      sub.textContent = it.pushName ? it.display : 'ללא שם';
       main.appendChild(name);
       main.appendChild(sub);
 
@@ -322,16 +483,12 @@
       li.appendChild(av);
       li.appendChild(main);
 
-      if (it.wroteToYou) {
+      var label = it.savedYou ? 'שמר אותך' : it.wroteToYou ? 'כתב לך' : it.business ? 'עסקי' : '';
+      if (label) {
         var tag = document.createElement('span');
         tag.className = 'tag';
-        tag.textContent = 'כתב לך';
+        tag.textContent = label;
         li.appendChild(tag);
-      } else if (it.business) {
-        var b = document.createElement('span');
-        b.className = 'tag';
-        b.textContent = 'עסקי';
-        li.appendChild(b);
       }
 
       li.addEventListener('click', function (e) {
@@ -350,14 +507,14 @@
     $('selCount').textContent = selected.size + ' נבחרו';
     $('btnExport').disabled = selected.size === 0;
     var rows = visible();
-    var all = rows.length > 0 && rows.every(function (it) { return selected.has(it.i); });
+    var all = rows.length > 0 && rows.every(function (it) { return selected.has(it.key); });
     $('selectAll').checked = all;
   }
 
   $('selectAll').addEventListener('change', function () {
     var rows = visible();
     rows.forEach(function (it) {
-      if ($('selectAll').checked) selected.add(it.i); else selected.delete(it.i);
+      if ($('selectAll').checked) selected.add(it.key); else selected.delete(it.key);
     });
     renderList();
   });
@@ -365,6 +522,18 @@
   $('search').addEventListener('input', renderList);
 
   function syncTabs() {
+    var counts = tabCounts();
+    // לשונית ריקה רק מבלבלת - מסתירים אותה
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+      var key = t.getAttribute('data-tab');
+      // שומרים את הכיתוב המקורי פעם אחת, אחרת הספירה מצטברת בכל רינדור
+      if (!t.dataset.label) t.dataset.label = t.textContent.trim();
+      t.classList.toggle('hidden', counts[key] === 0);
+      t.textContent = t.dataset.label + ' (' + counts[key] + ')';
+    });
+    if (counts[activeTab] === 0) {
+      activeTab = counts.me ? 'me' : counts.chat ? 'chat' : 'contact';
+    }
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
       t.classList.toggle('is-active', t.getAttribute('data-tab') === activeTab);
     });
@@ -376,6 +545,18 @@
       syncTabs();
       renderList();
     });
+  });
+
+  /* ---------------- הוספת המקור השני ---------------- */
+  $('btnAddSource').addEventListener('click', function () {
+    // משחררים את הסשן הנוכחי בשרת לפני שפותחים אחד חדש
+    if (socket && sessionId) socket.emit('release');
+    sessionId = null;
+    $('mergeCount').textContent = String(items.length);
+    $('mergeNote').classList.remove('hidden');
+    $('srcMe').classList.toggle('is-done', Boolean(sourcesDone.me));
+    $('srcWa').classList.toggle('is-done', Boolean(sourcesDone.wa));
+    show('source');
   });
 
   /* ============================================================
@@ -407,7 +588,7 @@
       return;
     }
 
-    var chosen = items.filter(function (it) { return selected.has(it.i); });
+    var chosen = items.filter(function (it) { return selected.has(it.key); });
 
     // בדיקת הביטחון האחרונה קורית בתוך buildVcf: כל מספר נבדק שוב מול
     // ספר הטלפונים ממש לפני הכתיבה, גם אם כבר סונן ברשימה.
@@ -433,6 +614,8 @@
     sessionId = null;
     items = [];
     selected = new Set();
+    removedTotal = 0;
+    sourcesDone = {};
     barPct = 8;
     $('bar').style.width = '8%';
 
@@ -443,8 +626,20 @@
     $('contactsOk').classList.add('hidden');
     $('contactsErr').classList.add('hidden');
     $('filterNote').classList.add('hidden');
+    $('mergeNote').classList.add('hidden');
+    $('srcNote').classList.add('hidden');
+    $('btnAddSource').classList.add('hidden');
+    $('srcMe').classList.remove('is-done');
+    $('srcWa').classList.remove('is-done');
 
     $('phoneForm').classList.add('hidden');
+    $('mePhoneForm').classList.remove('hidden');
+    $('meCodeForm').classList.add('hidden');
+    $('meWait').classList.add('hidden');
+    $('meCodeErr').classList.add('hidden');
+    $('mePhone').value = '';
+    $('meCode').value = '';
+
     show('intro');
   }
 

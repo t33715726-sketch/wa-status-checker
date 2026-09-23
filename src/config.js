@@ -55,6 +55,32 @@ export const config = {
     maxExport: int(process.env.MAX_EXPORT, 3000)
   },
 
+  /**
+   * מסלול "מי שמר אותי" דרך שירות זיהוי מספרים (Me).
+   * כבוי כברירת מחדל: בלי גישה מורשית המסלול לא מוצג בכלל.
+   * ראה src/providers/meProvider.js ו-docs/DECISIONS.md.
+   */
+  me: {
+    enabled: bool(process.env.ME_ENABLED, false),
+    baseUrl: process.env.ME_API_BASE || '',
+    apiKey: process.env.ME_API_KEY || '',
+    apiKeyHeader: process.env.ME_API_KEY_HEADER || 'X-Api-Key',
+    defaultCountry: process.env.ME_DEFAULT_COUNTRY || '972',
+    timeoutMs: int(process.env.ME_TIMEOUT_MS, 15 * 1000),
+    maxResults: int(process.env.ME_MAX_RESULTS, 20000),
+    maxPages: int(process.env.ME_MAX_PAGES, 50),
+    // כמה זמן מחכים שהמשתמש יזין את הקוד
+    otpWaitMs: int(process.env.ME_OTP_WAIT_MS, 5 * 60 * 1000),
+    // תקרת ניסיונות קוד לפני שהסשן נסגר
+    maxCodeAttempts: int(process.env.ME_MAX_CODE_ATTEMPTS, 5),
+    paths: {
+      requestOtp: process.env.ME_PATH_REQUEST_OTP || 'auth/otp',
+      verifyOtp: process.env.ME_PATH_VERIFY_OTP || 'auth/verify',
+      savedMe: process.env.ME_PATH_SAVED_ME || 'me/saved-by',
+      revoke: process.env.ME_PATH_REVOKE || 'auth/revoke'
+    }
+  },
+
   // טלמטריה אנונימית (ספירות בלבד, בלי מספרים ובלי שמות). כבוי כברירת מחדל.
   stats: {
     enabled: bool(process.env.STATS_ENABLED, false),

@@ -66,7 +66,7 @@
 
   <!-- ========== שלב 1: אנשי הקשר ========== -->
   <section id="viewContacts" class="view hidden">
-    <p class="step-mark">שלב 1 מתוך 2</p>
+    <p class="step-mark">שלב 1 מתוך 3</p>
     <h2 class="view-title">העלה את אנשי הקשר שלך</h2>
 
     <div class="card">
@@ -89,16 +89,84 @@
     <div id="contactsOk" class="card ok-card hidden">
       <p class="ok-line">נקראו <strong id="contactsCount">0</strong> מספרים מספר הטלפונים שלך.</p>
       <p class="hint">אף אחד מהם לא ייכנס לקובץ שתקבל בסוף.</p>
-      <button type="button" id="btnToConnect" class="btn btn-primary btn-lg">המשך לחיבור וואטסאפ</button>
+      <button type="button" id="btnToConnect" class="btn btn-primary btn-lg">המשך</button>
     </div>
 
     <p id="contactsErr" class="err-line hidden"></p>
     <button type="button" class="btn btn-quiet" data-action="restart">חזרה</button>
   </section>
 
-  <!-- ========== שלב 2: חיבור ========== -->
+  <!-- ========== שלב 2: מאיפה מביאים את הרשימה ========== -->
+  <section id="viewSource" class="view hidden">
+    <p class="step-mark">שלב 2 מתוך 3</p>
+    <h2 class="view-title">מאיפה נביא את הרשימה?</h2>
+    <p class="hint">
+      שתי השאלות דומות אבל לא זהות. אפשר להריץ את שתיהן ולמזג לקובץ אחד.
+    </p>
+
+    <div class="sources">
+      <button type="button" id="srcMe" class="source-card">
+        <span class="source-title">מי שמר אותי</span>
+        <span class="source-q">התשובה המלאה — כולל אנשים שמעולם לא כתבו לך</span>
+        <span class="source-how">מספר טלפון וקוד חד-פעמי</span>
+        <span class="source-state" id="srcMeState"></span>
+      </button>
+
+      <button type="button" id="srcWa" class="source-card">
+        <span class="source-title">מי מתכתב איתי</span>
+        <span class="source-q">מי שיש איתך שיחה ואינו שמור אצלך</span>
+        <span class="source-how">חיבור וואטסאפ, כמו וואטסאפ ווב</span>
+        <span class="source-state ok">זמין</span>
+      </button>
+    </div>
+
+    <p id="srcNote" class="err-line hidden"></p>
+
+    <div id="mergeNote" class="card ok-card hidden">
+      <p class="ok-line">כבר אספנו <strong id="mergeCount">0</strong> אנשים מהמקור הקודם.</p>
+      <p class="hint">מה שתאסוף עכשיו יתמזג איתם לקובץ אחד, בלי כפילויות.</p>
+      <button type="button" id="btnToResults" class="btn btn-ghost btn-lg">דלג — קח אותי לרשימה</button>
+    </div>
+
+    <button type="button" class="btn btn-quiet" data-action="restart">חזרה</button>
+  </section>
+
+  <!-- ========== שלב 3א: מי שמר אותי ========== -->
+  <section id="viewMe" class="view hidden">
+    <p class="step-mark">שלב 3 מתוך 3</p>
+    <h2 class="view-title">מי שמר את המספר שלך</h2>
+
+    <form id="mePhoneForm" class="phone-form" autocomplete="off">
+      <label class="label" for="mePhone">מספר הטלפון שלך</label>
+      <div class="phone-row">
+        <input id="mePhone" name="mePhone" class="input" type="tel" inputmode="tel"
+               placeholder="050-000-0000" maxlength="20" required />
+        <button type="submit" class="btn btn-primary">שליחת קוד</button>
+      </div>
+      <p class="hint">הקוד מגיע אליך בוואטסאפ. הוא חד-פעמי ולא נשמר אצלנו.</p>
+    </form>
+
+    <form id="meCodeForm" class="phone-form hidden" autocomplete="off">
+      <label class="label" for="meCode">הקוד שקיבלת ב-<span id="meSentTo" dir="ltr"></span></label>
+      <div class="phone-row">
+        <input id="meCode" name="meCode" class="input" type="text" inputmode="numeric"
+               dir="ltr" placeholder="123456" maxlength="8" required />
+        <button type="submit" class="btn btn-primary">אישור</button>
+      </div>
+      <p id="meCodeErr" class="err-line hidden"></p>
+    </form>
+
+    <div id="meWait" class="card center hidden">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="meWaitText">בודקים...</p>
+    </div>
+
+    <button type="button" class="btn btn-quiet" data-action="restart">ביטול</button>
+  </section>
+
+  <!-- ========== שלב 3ב: חיבור וואטסאפ ========== -->
   <section id="viewConnect" class="view hidden">
-    <p class="step-mark">שלב 2 מתוך 2</p>
+    <p class="step-mark">שלב 3 מתוך 3</p>
     <h2 class="view-title">חיבור לוואטסאפ</h2>
 
     <div id="chooser" class="choices">
@@ -176,6 +244,7 @@
 
     <div class="toolbar">
       <div class="tabs" role="tablist">
+        <button type="button" class="tab" data-tab="me" role="tab">שמרו אותך</button>
         <button type="button" class="tab is-active" data-tab="chat" role="tab">מתכתבים איתך</button>
         <button type="button" class="tab" data-tab="contact" role="tab">מקבוצות משותפות</button>
       </div>
@@ -206,6 +275,10 @@
         אם משהו בכל זאת לא נראה לך אחרי הייבוא: contacts.google.com ← גלגל השיניים ←
         <strong>ביטול שינויים</strong> מחזיר את ספר הטלפונים אחורה עד 30 יום.
       </p>
+      <button type="button" id="btnAddSource" class="btn btn-ghost btn-lg hidden">
+        <span class="btn-title">להוסיף גם את המקור השני</span>
+        <span class="btn-note">התוצאות יתמזגו לקובץ אחד</span>
+      </button>
       <button type="button" class="btn btn-quiet" data-action="restart">סיום ומחיקה</button>
     </div>
   </section>

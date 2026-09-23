@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { analyze, formatPhone, isPersonalJid, jidUser } from '../src/analyze.js';
+import * as meProvider from '../src/providers/meProvider.js';
 
 /* contacts.js הוא מודול דפדפן (IIFE שכותב ל-window). טוענים אותו כאן
    בתוך הקשר מבודד כדי לבדוק אותו בדיוק כפי שהוא רץ אצל המשתמש. */
@@ -19,6 +20,13 @@ const book = (numbers) => parseContactsFile(
 let pass = 0;
 const t = (name, fn) => {
   fn();
+  pass += 1;
+  console.log(`  ✓ ${name}`);
+};
+
+/** גרסה אסינכרונית, לבדיקות שנוגעות בספק */
+const ta = async (name, fn) => {
+  await fn();
   pass += 1;
   console.log(`  ✓ ${name}`);
 };
@@ -215,6 +223,35 @@ t('מספר לא תקין נזרק', () => {
 t('תחילית מנוקה ומוגבלת באורך', () => {
   assert.equal(sanitizePrefix('  a\nb  '), 'a b');
   assert.equal(sanitizePrefix('x'.repeat(50)).length, 20);
+});
+
+console.log('\nמסלול Me');
+t('נרמול מספר לצורה בינלאומית', () => {
+  assert.equal(meProvider.normalizeMsisdn('050-123-4567'), '972501234567');
+  assert.equal(meProvider.normalizeMsisdn('+972 50 123 4567'), '972501234567');
+  assert.equal(meProvider.normalizeMsisdn('00972501234567'), '972501234567');
+  assert.equal(meProvider.normalizeMsisdn('123'), '');
+  assert.equal(meProvider.normalizeMsisdn(''), '');
+});
+
+t('המסלול כבוי כברירת מחדל', () => {
+  // בלי ME_ENABLED ו-ME_API_BASE הדף לא מציע את המסלול בכלל
+  assert.equal(meProvider.isConfigured(), false);
+});
+
+await ta('בלי הגדרה הספק נכשל בקוד ברור ולא בשקט', async () => {
+  await assert.rejects(
+    () => meProvider.requestOtp('0501234567'),
+    (err) => err.code === 'ME_NOT_CONFIGURED'
+  );
+  await assert.rejects(
+    () => meProvider.fetchSavedMe('tok'),
+    (err) => err.code === 'ME_NOT_CONFIGURED'
+  );
+});
+
+await ta('מספר לא תקין נעצר לפני שיוצאת בקשה', async () => {
+  await assert.rejects(() => meProvider.requestOtp('12'), (err) => err.code === 'BAD_PHONE');
 });
 
 console.log(`\n${pass} בדיקות עברו\n`);

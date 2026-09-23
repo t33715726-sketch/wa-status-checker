@@ -12,6 +12,7 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { sessions } from './sessionManager.js';
 import { recordScan } from './stats.js';
+import { isConfigured as meConfigured } from './providers/meProvider.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '..', 'public');
@@ -51,6 +52,14 @@ const apiLimiter = rateLimit({
   max: config.limits.apiMax,
   standardHeaders: true,
   legacyHeaders: false
+});
+
+/**
+ * אילו מקורות נתונים זמינים בשרת הזה.
+ * הדף בונה לפי זה את מסך בחירת המקור, במקום להציג מסלול שלא יעבוד.
+ */
+app.get('/api/sources', apiLimiter, (_req, res) => {
+  res.json({ whatsapp: true, me: meConfigured() });
 });
 
 app.get('/healthz', (_req, res) => {
@@ -173,9 +182,62 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('me:start', async ({ phone } = {}) => {
+    if (boundId) return;
+
+    if (!meConfigured()) {
+      return socket.emit('failed', {
+        code: 'ME_NOT_CONFIGURED',
+        message: 'מסלול זה עדיין לא זמין. בינתיים אפשר להשתמש בסריקת וואטסאפ.'
+      });
+    }
+    if (sessions.atCapacity()) {
+      return socket.emit('failed', {
+        code: 'BUSY',
+        message: 'המערכת עמוסה כרגע. נסה שוב בעוד דקה.'
+      });
+    }
+    if (sessions.countByIp(ip) >= 2) {
+      return socket.emit('failed', {
+        code: 'IP_LIMIT',
+        message: 'כבר יש חיבור פעיל מהמכשיר הזה.'
+      });
+    }
+
+    let session;
+    try {
+      session = sessions.create(() => {}, ip, 'me');
+      session.emit = emitterFor(session);
+      bind(session);
+      socket.emit('session', { sessionId: session.id, source: 'me' });
+      await session.start(phone);
+    } catch (err) {
+      logger.error({ err: err?.message }, 'me session start failed');
+      if (session) await sessions.destroy(session.id);
+      socket.emit('failed', { code: 'START_FAILED', message: 'לא הצלחנו להתחיל. נסה שוב.' });
+    }
+  });
+
+  socket.on('me:verify', async ({ code } = {}) => {
+    const session = boundId ? sessions.get(boundId) : null;
+    if (!session || session.source !== 'me') return;
+    try {
+      await session.verify(code);
+    } catch (err) {
+      logger.error({ err: err?.message }, 'me verify failed');
+      socket.emit('failed', { code: 'VERIFY_FAILED', message: 'האימות נכשל. נסה שוב.' });
+    }
+  });
+
   socket.on('done', () => {
     const session = boundId ? sessions.get(boundId) : null;
     if (session?.stats) recordScan(session.stats);
+  });
+
+  /** סיום מקור אחד כדי לפנות מקום למקור השני באותו ביקור */
+  socket.on('release', async () => {
+    if (boundId) await sessions.destroy(boundId);
+    boundId = null;
   });
 
   socket.on('end', async () => {
