@@ -14,39 +14,9 @@
    * אותו אדם מופיע בספר הטלפונים כ-050-123-4567 ובוואטסאפ כ-+972501234567.
    * מנרמלים את שניהם לאותה צורה: בלי קידומת מדינה ובלי אפס מוביל.
    */
-  /**
-   * היכן נגמר המספר ומתחילה שלוחה או הערה.
-   *
-   * אותו תו אומר שני דברים שונים לפי מיקומו:
-   *   "+1 (646) 207-6164"  - הסוגר הוא קידומת אזור, חלק מהמספר
-   *   "050-123-4567 (2)"   - הסוגר הוא הערה אחרי מספר שלם
-   *
-   * לכן חותכים רק אחרי שכבר נאספו 7 ספרות, כלומר אחרי שיש מספר
-   * שעומד בפני עצמו. חיתוך מוקדם מדי מוחק מספר בינלאומי שלם;
-   * אי-חיתוך בולע את ספרות השלוחה למספר. שתי הטעויות מסתיימות
-   * באותו מקום: איש קשר שמור שאינו מזוהה, ולכן נדרס בייבוא.
-   *
-   * @returns {number} אינדקס החיתוך, או ‎-1 אם אין
-   */
-  function extensionStart(value) {
-    var digits = 0;
-    for (var i = 0; i < value.length; i++) {
-      var ch = value.charAt(i);
-      if (ch >= '0' && ch <= '9') { digits += 1; continue; }
-      if (digits < 7) continue;
+  var DEFAULT_COUNTRY = 'IL';
 
-      if (ch === ';' || ch === '#' || ch === '|' || ch === '(' || ch === ',') return i;
-      if ((ch === 'x' || ch === 'X') && /^\s*\d/.test(value.slice(i + 1))) return i;
-      if ((ch === 'e' || ch === 'E') && /^xt\.?\s*\d/i.test(value.slice(i + 1))) return i;
-    }
-    return -1;
-  }
-
-  /**
-   * ספרות שאינן ASCII (ערביות-הודיות, דוואנגרי, פרסיות) ל-ASCII.
-   * בלי זה `\D` מוחק אותן, השדה מחזיר אפס ספרות, והאדם נחשב
-   * ללא-שמור - כלומר נכתב לקובץ ונדרס.
-   */
+  /** ספרות שאינן ASCII (ערביות-הודיות, פרסיות, דוואנגרי) ל-ASCII */
   function asciiDigits(value) {
     return String(value).replace(/[\u0660-\u0669\u06f0-\u06f9\u0966-\u096f]/g, function (d) {
       var c = d.charCodeAt(0);
@@ -56,50 +26,132 @@
   }
 
   /**
-   * התווים הלגיטימיים במספר טלפון: ספרות ומפרידי תצוגה בלבד.
+   * כל המספרים התקינים בשדה אחד, בצורת E.164 בלי ‎+‎.
    *
-   * כולל את תווי הבקרה הדו-כיווניים (U+200E/200F, U+202A-202E,
-   * U+2066-2069). הם בלתי נראים, מערכות עבריות וערביות עוטפות בהם
-   * מספרים כדי שיוצגו משמאל לימין, והם מופיעים ב-411 מתוך 7,486
-   * השדות בייצוא אמיתי. הם לא חלק מהמספר אבל גם לא סימן לתקלה.
+   * למה מנתח ולא רג'קס
+   * -------------------
+   * ניסינו שלוש פעמים לקלף שלוחות והערות ברג'קס, ובכל פעם נסגר חור
+   * ונפתח אחר: סוגר הוא קידומת אזור וגם הערה, פסיק הוא השהיה וגם מפריד
+   * בין שני מספרים, ומקף מחבר "03-6123456-204" שבו השלוחה נדבקת למספר.
+   * מחלקת תווים לא יכולה להבחין ביניהם, כי ההבדל הוא מבני ולא תחבירי.
+   *
+   * `isValid()` כן יכול: הוא בודק את המספר מול תוכנית המספור של המדינה.
+   * "+97236123456204" הוא לא מספר ישראלי תקין, ולכן נדחה - וזה בדיוק
+   * המקרה שדלף. שדה שלא הניב אף מספר תקין מסומן כלא-מובן, והדף עוצר.
+   *
+   * @returns {string[]}
    */
-  var PHONE_CHARS = /^[+0-9\s()\-.\u00a0\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/;
+  function parseNumbers(raw) {
+    var value = asciiDigits(String(raw || '')).replace(/^\s*tel:/i, '').trim();
+    if (!value) return [];
 
+    var lib = (typeof globalThis !== 'undefined' && globalThis.libphonenumber) || window.libphonenumber;
+    if (!lib) return [];
+
+    var out = [];
+    try {
+      var one = lib.parsePhoneNumberFromString(value, DEFAULT_COUNTRY);
+      // isPossible ולא רק isValid: מספר ישן, מספר זר שיוחס בטעות למדינת
+      // ברירת המחדל, או מספר שלא מוקצה - כולם אורך חוקי ואנשים אמיתיים.
+      // דחייה שלהם חוסמת את המשתמש לשווא. מה ש-isPossible כן פוסל הוא
+      // בדיוק מה שחיפשנו: אורך שאינו קיים בשום תוכנית מספור, כלומר
+      // ספרות שהודבקו - "03-6123456-204" יוצא 14 ספרות ונפסל.
+      if (one && (one.isValid() || one.isPossible())) {
+        out.push(String(one.number).replace(/\D/g, ''));
+      }
+    } catch (err) { /* ממשיכים לחיפוש ריבוי מספרים */ }
+
+    if (!out.length) {
+      // שדה שמחזיק כמה מספרים, או מספר עטוף בטקסט
+      try {
+        var it = lib.findNumbers(value, DEFAULT_COUNTRY, { v2: true });
+        for (var i = 0; i < it.length; i++) {
+          var d = String(it[i].number.number).replace(/\D/g, '');
+          if (d && out.indexOf(d) === -1) out.push(d);
+        }
+      } catch (err2) { /* אין מה לעשות - השדה יסומן כלא-מובן */ }
+    }
+    return out;
+  }
+
+  /**
+   * מפתחות השוואה לכל המספרים בשדה.
+   *
+   * אותו אדם מופיע בספר הטלפונים כ-050-123-4567 ובוואטסאפ כ-+972501234567.
+   * מנרמלים לאותה צורה, ומוסיפים מפתחות זנב של 9 ו-7 ספרות:
+   * 9 למספר ישראלי שנשמר בלי קידומת, 7 למדינות עם מספר לאומי בן 8
+   * ספרות (נורבגיה, דנמרק, הונג קונג) שבהן מפתח 9 לא נוצר.
+   *
+   * מפתח זנב מרחיב את ההתאמה ולכן מרחיב את ההחרגה. זה הכיוון הבטוח:
+   * התאמת שווא אומרת שמישהו לא ייכנס לקובץ, והחמצה אומרת שאיש קשר
+   * קיים נדרס. נמדד על ספר אמיתי: 0.071% התאמות שווא.
+   */
   function phoneKeys(raw) {
-    var value = asciiDigits(String(raw || ''));
+    var numbers = parseNumbers(raw);
 
-    var cut = extensionStart(value);
-    if (cut > 0) value = value.slice(0, cut);
-
-    var digits = value.replace(/\D/g, '');
-    if (digits.length < 6) return [];
+    // המנתח לא הכיר - נופלים לספרות הגולמיות. עדיף מפתח משוער
+    // מאשר שום מפתח, כי "שום מפתח" פירושו שהאדם נחשב ללא-שמור.
+    if (!numbers.length) {
+      var rawDigits = asciiDigits(String(raw || '')).replace(/^\s*tel:/i, '').replace(/\D/g, '');
+      if (rawDigits.length >= 6 && rawDigits.length <= 20) {
+        if (rawDigits.charAt(0) === '0') rawDigits = '972' + rawDigits.slice(1);
+        numbers = [rawDigits];
+      }
+    }
 
     var keys = [];
-    var rest = digits;
 
-    if (rest.indexOf('00') === 0) rest = rest.slice(2);
-    if (rest.indexOf('972') === 0) rest = rest.slice(3);
-    else if (rest.charAt(0) === '0') rest = rest.slice(1);
+    for (var n = 0; n < numbers.length; n++) {
+      var digits = numbers[n];
+      if (digits.length < 6) continue;
 
-    if (rest.length >= 6) keys.push(rest);
+      var rest = digits;
+      if (rest.indexOf('972') === 0) rest = rest.slice(3);
+      if (rest.length >= 6 && keys.indexOf(rest) === -1) keys.push(rest);
 
-    // מפתחות גיבוי: 9 ו-7 הספרות האחרונות.
-    //
-    // 9 מכסה מספר ישראלי שנשמר בלי קידומת מול מספר בינלאומי מוואטסאפ.
-    // 7 מכסה מדינות עם מספר לאומי בן 8 ספרות - נורבגיה, דנמרק, הונג קונג,
-    // סינגפור - שבהן מפתח 9 לא נוצר כלל.
-    //
-    // זה מרחיב את ההתאמה ולכן מרחיב את ההחרגה. הכיוון הזה הוא הבטוח:
-    // התאמת שווא אומרת שמישהו לא ייכנס לקובץ, והחמצה אומרת שאיש קשר
-    // קיים נדרס. הסיכון להתנגשות אקראית על 7 ספרות בספר של 7000 מספרים
-    // הוא פחות מעשירית האחוז.
-    [9, 7].forEach(function (n) {
-      if (digits.length >= n) {
-        var tail = digits.slice(-n);
-        if (keys.indexOf(tail) === -1) keys.push(tail);
+      [9, 7].forEach(function (len) {
+        if (digits.length >= len) {
+          var tail = digits.slice(-len);
+          if (keys.indexOf(tail) === -1) keys.push(tail);
+        }
+      });
+
+      // שלוחה שהודבקה בסוף ("03-6123456-204"): המספר האמיתי הוא
+      // תחילית של מחרוזת הספרות. מפיקים גם מפתחות תחילית כדי שההתאמה
+      // תצליח במקום להיכשל. מפתח עודף רק מרחיב את ההחרגה - הכיוון
+      // הבטוח: מישהו לא ייכנס לקובץ, במקום שאיש קשר קיים יידרס.
+      if (rest.length > 9) {
+        [9, 8, 7].forEach(function (len) {
+          var pre = rest.slice(0, len);
+          if (pre.length === len && keys.indexOf(pre) === -1) keys.push(pre);
+        });
       }
-    });
+    }
     return keys;
+  }
+
+  /**
+   * האם הבנו את השדה.
+   *
+   * מצב הכשל שהפיל אותנו שלוש פעמים אינו "לא הופק מפתח" אלא "הופק מפתח
+   * שגוי": ספרות שהודבקו דרך מפריד לגיטימי מזיזות את המספר, ההשוואה
+   * נכשלת, והאדם - ששמור אצל המשתמש - נכתב לקובץ ונדרס.
+   *
+   * שדה עם 6 ספרות ומעלה שלא הניב אף מספר תקין הוא כשל, והדף עוצר.
+   * שדה קצר יותר (מספר שירות, "1-800-FLOWERS", תא ריק) אינו מספר.
+   */
+  function understood(raw) {
+    var value = asciiDigits(String(raw || '')).replace(/^\s*tel:/i, '').trim();
+    var digits = value.replace(/\D/g, '');
+    if (digits.length < 6) return true;
+    if (parseNumbers(raw).length > 0) return true;
+
+    // המנתח לא הכיר את המספר, אבל השדה מורכב רק מספרות וממפרידי
+    // תצוגה - כלומר הוא מספר, גם אם ישן, זר או לא מוקצה. חסימת
+    // המשתמש כאן היא חסימת שווא, ומפתחות התחילית והזנב ממילא
+    // מכסים אותו. חוסמים רק שדה שיש בו תוכן שלא הבנו.
+    return digits.length <= 20 &&
+      /^[+0-9\s()\-.\u00a0\u200e\u200f\u202a-\u202e\u2066-\u2069]+$/.test(value);
   }
 
   /** האם המספר הזה כבר קיים בספר הטלפונים */
@@ -133,13 +185,33 @@
     TEL_LINE.lastIndex = 0;
     while ((m = TEL_LINE.exec(text)) !== null) {
       // שדה אחד עשוי להחזיק כמה מספרים
-      var parts = m[1].split(/:::|\//);
+      var parts = m[1].split(/:::|\/|(?<!\\),/);
       for (var i = 0; i < parts.length; i++) {
-        // הנרמול לפני הספירה: ספרות שאינן ASCII נמחקות על ידי \D
         if (asciiDigits(parts[i]).replace(/\D/g, '').length >= 6) out.push(parts[i]);
       }
     }
     return out;
+  }
+
+  /**
+   * כמה תאים בקובץ CSV נראים כמו מספר טלפון - בלי קשר לזיהוי הכותרת.
+   * זהו המכנה של שער השלמות: אם עמודה שלמה לא זוהתה, היחס יצנח.
+   */
+  function countCsvCandidates(text) {
+    var lines = text.split(/\r?\n/).filter(function (l) { return l.trim(); });
+    var n = 0;
+    for (var r = 1; r < lines.length; r++) {
+      var cells = splitCsvLine(lines[r]);
+      for (var c = 0; c < cells.length; c++) {
+        var parts = String(cells[c]).split(/:::|;|\//);
+        for (var i = 0; i < parts.length; i++) {
+          var v = asciiDigits(parts[i]).trim();
+          if (v.replace(/\D/g, '').length >= 6 &&
+              /^[\s+\-().0-9\u00a0\u200e\u200f\u202a-\u202e\u2066-\u2069]+$/.test(v)) n += 1;
+        }
+      }
+    }
+    return n;
   }
 
   /** כמה שורות טלפון יש בקובץ - לאימות שהפרסור לא פספס */
@@ -184,7 +256,7 @@
     var cols = [];
     for (var i = 0; i < header.length; i++) {
       var h = header[i].toLowerCase();
-      if (h.indexOf('phone') !== -1 || h.indexOf('טלפון') !== -1 || h.indexOf('tel') === 0) {
+      if (/phone|mobile|cell|tel|fax|טלפון|נייד|סלולר|וואטסאפ|whatsapp/.test(h)) {
         cols.push(i);
       }
     }
@@ -204,28 +276,6 @@
       }
     }
     return out;
-  }
-
-  /**
-   * האם הבנו את השדה במלואו.
-   *
-   * מצב הכשל שהפיל אותנו פעמיים אינו "לא הופק מפתח" אלא "הופק מפתח
-   * שגוי": תו לא צפוי בתוך המספר מזיז את הספרות, המפתח לא תואם,
-   * והאדם - ששמור אצל המשתמש - נכתב לקובץ ונדרס. שער שסופר שדות
-   * בלי מפתח עיוור לזה לגמרי.
-   *
-   * לכן בודקים את מה שנשמר אחרי קילוף השלוחה: אם נשאר בו תו שאינו
-   * ספרה או מפריד תצוגה, לא הבנו את השדה ואסור להמשיך.
-   *
-   * שדה עם פחות מ-6 ספרות אינו מספר (מספר שירות, "1-800-FLOWERS",
-   * תא ריק) ואינו נספר ככשל.
-   */
-  function understood(raw) {
-    var value = asciiDigits(String(raw || ''));
-    if (value.replace(/\D/g, '').length < 6) return true;
-    var cut = extensionStart(value);
-    var kept = cut > 0 ? value.slice(0, cut) : value;
-    return PHONE_CHARS.test(kept);
   }
 
   /**
@@ -257,8 +307,9 @@
       // מהשורות עובר אותו ברווח, ושמונה אנשים נדרסים בשקט. לכן
       // `unparsed` הוא רצפה מוחלטת - אפילו שדה אחד כזה הוא עצירה.
       unparsed: unparsed,
-      // גם ל-CSV יש שער: בלי מונה שדות השער האחוזי מדולג לגמרי
-      telLines: isVcard ? countTelLines(body) : raw.length,
+      // המכנה נמדד מהקלט הגולמי ולא מהתוצר. מכנה שנגזר מ-`raw` נותן
+      // יחס 1.000 תמיד - גם כשעמודת "נייד" לא זוהתה ונזרקה בשלמותה.
+      telLines: isVcard ? countTelLines(body) : countCsvCandidates(body),
       cards: isVcard ? (body.match(/BEGIN:VCARD/g) || []).length : 0
     };
   }
@@ -353,6 +404,7 @@
     phoneKeys: phoneKeys,
     unfold: unfold,
     understood: understood,
+    parseNumbers: parseNumbers,
     isSaved: isSaved,
     parseContactsFile: parseContactsFile,
     buildVcf: buildVcf,

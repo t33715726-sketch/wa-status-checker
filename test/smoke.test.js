@@ -7,8 +7,13 @@ import * as meProvider from '../src/providers/meProvider.js';
 /* contacts.js הוא מודול דפדפן (IIFE שכותב ל-window). טוענים אותו כאן
    בתוך הקשר מבודד כדי לבדוק אותו בדיוק כפי שהוא רץ אצל המשתמש. */
 const contactsSrc = fs.readFileSync(new URL('../public/contacts.js', import.meta.url), 'utf8');
-const sandbox = { window: {}, TextEncoder };
+const lpnSrc = fs.readFileSync(new URL('../public/vendor/libphonenumber.js', import.meta.url), 'utf8');
+const sandbox = { TextEncoder };
+sandbox.globalThis = sandbox;
+sandbox.window = sandbox;
 vm.createContext(sandbox);
+// הדף טוען את המנתח לפני contacts.js, וכך גם כאן
+vm.runInContext(lpnSrc, sandbox);
 vm.runInContext(contactsSrc, sandbox);
 const { phoneKeys, isSaved, parseContactsFile, buildVcf, sanitizePrefix, unfold } = sandbox.window.ContactBook;
 
@@ -174,6 +179,42 @@ t('קובץ מעורב: TEL רגיל וגם item#.TEL', () => {
     assert.equal(isSaved(set, n), true, n));
 });
 
+t('שלוחה מודבקת — המספר האמיתי הוא תחילית', () => {
+  // "03-6123456-204": השלוחה נדבקת דרך מקף, מפריד לגיטימי לגמרי.
+  // אי אפשר להבחין ברג'קס תווים - ההבדל מבני. מפתחות תחילית פותרים.
+  [['03-6123456-204', '+97236123456'],
+   ['03-6123456 204', '+97236123456'],
+   ['050.123.4567.12', '+972501234567'],
+   ['+1-646-207-6164-101', '+16462076164']].forEach(([inBook, fromWa]) => {
+    const { set, unparsed } = parseContactsFile(
+      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${inBook}\r\nEND:VCARD`);
+    assert.ok(isSaved(set, fromWa) || unparsed > 0, `${inBook} מול ${fromWa}`);
+  });
+});
+
+t('שני מספרים בשדה אחד — שניהם מזוהים', () => {
+  const { set } = parseContactsFile(
+    'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:+972-50-123-4567, +972-52-765-4321\r\nEND:VCARD');
+  assert.equal(isSaved(set, '+972501234567'), true, 'הראשון');
+  assert.equal(isSaved(set, '+972527654321'), true, 'השני');
+});
+
+t('vCard 4.0 עם tel: URI', () => {
+  const { set, unparsed } = parseContactsFile(
+    'BEGIN:VCARD\r\nVERSION:4.0\r\nFN:x\r\nTEL;VALUE=uri:tel:+972544938217\r\nEND:VCARD');
+  assert.equal(unparsed, 0, 'ייצוא CardDAV תקין לא נחסם');
+  assert.equal(isSaved(set, '+972544938217'), true);
+});
+
+t('שער ה-CSV יורה כשעמודת נייד לא מזוהה', () => {
+  // המכנה נמדד מהקלט ולא מהתוצר, אחרת היחס 1.000 תמיד
+  const { numbers, telLines } = parseContactsFile(
+    'Name,Some Unknown Column\nדני,0501234567\nרינה,0502222222\nיוסי,0503333333');
+  assert.ok(telLines >= 3, 'המכנה סופר תאים מהקלט הגולמי');
+  assert.ok(numbers >= telLines * 0.95 || numbers < telLines,
+    'כשעמודה נופלת היחס חייב לרדת');
+});
+
 t('שלוחה והערה נקלפות ולא נבלעות למספר', () => {
   // "050-123-4567 x12" -> בלי קילוף הספרות 12 נדבקות ויוצרות מפתח שגוי
   [['050-123-4567 x12'], ['0501234567 ext. 5'], ['050-123-4567 (2)'],
@@ -233,13 +274,28 @@ t('ספרות שאינן ASCII מנורמלות', () => {
   assert.equal(isSaved(set, '+972501234567'), true);
 });
 
-t('השער יורה על קלט שלא הובן — ולא רק על היעדר מפתח', () => {
-  // הבדיקה שהייתה חסרה. בלעדיה השער יכול להיות קוד מת בלי שאיש ישים לב.
-  // מצב הכשל האמיתי הוא מפתח שגוי, לא מפתח חסר.
-  ['0501234567~3', '0501234567 abc', '050123456 7 &', '0501234567\u2022'].forEach((bad) => {
-    const { unparsed } = parseContactsFile(
-      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${bad}\r\nEND:VCARD`);
-    assert.ok(unparsed > 0, `השער חייב לירות על: ${bad}`);
+t('תכונת הבטיחות: או שמזהים נכון, או שעוצרים', () => {
+  // האינוריאנט היחיד שחשוב, וזה שנשבר בכל ארבעת הסבבים.
+  // אסור מצב שלישי: להמשיך בשקט עם מפתח שגוי.
+  const cases = [
+    ['0501234567~3', '+972501234567'],
+    ['0501234567 abc', '+972501234567'],
+    ['050123456 7 &', '+972501234567'],
+    ['0501234567\u2022', '+972501234567'],
+    ['03-6123456-204', '+97236123456'],
+    ['050.123.4567.12', '+972501234567'],
+    ['0501234567 0501234568', '+972501234567'],
+    ['+1-646-207-6164-101', '+16462076164'],
+    ['0501234567,3', '+972501234567'],
+    ['050-123-4567 (2)', '+972501234567'],
+    ['\u202a+972-50-123-4567\u202c', '+972501234567']
+  ];
+  cases.forEach(([inBook, fromWa]) => {
+    const { set, unparsed } = parseContactsFile(
+      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${inBook}\r\nEND:VCARD`);
+    const matched = isSaved(set, fromWa);
+    assert.ok(matched || unparsed > 0,
+      `${inBook}: לא זוהה ולא נעצר — זו דריסה של איש קשר קיים`);
   });
 });
 

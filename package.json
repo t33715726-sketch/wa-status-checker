@@ -18,6 +18,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
+    "libphonenumber-js": "^1.13.13",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1"
