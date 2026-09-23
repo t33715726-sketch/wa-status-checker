@@ -11,7 +11,6 @@ import { Server as SocketServer } from 'socket.io';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { sessions } from './sessionManager.js';
-import { buildVcf, vcfFilename, sanitizePrefix } from './vcf.js';
 import { recordScan } from './stats.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -58,45 +57,15 @@ app.get('/healthz', (_req, res) => {
   res.json({ ok: true, sessions: sessions.size, uptime: Math.round(process.uptime()) });
 });
 
-/** ייצוא vCard. הטלפונים עצמם נשארים בשרת - הלקוח שולח רק אינדקסים. */
-app.post('/api/export', apiLimiter, (req, res) => {
-  const { sessionId, ids, prefix } = req.body || {};
-
-  if (typeof sessionId !== 'string' || sessionId.length > 64) {
-    return res.status(400).json({ error: 'BAD_SESSION' });
-  }
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: 'NO_SELECTION' });
-  }
-  if (ids.length > config.limits.maxExport) {
-    return res.status(413).json({ error: 'TOO_MANY' });
-  }
-
-  const session = sessions.get(sessionId);
-  if (!session || !Array.isArray(session.results)) {
-    return res.status(404).json({ error: 'SESSION_EXPIRED' });
-  }
-
-  const picked = [];
-  const seen = new Set();
-  for (const raw of ids) {
-    const i = Number(raw);
-    if (!Number.isInteger(i) || i < 0 || i >= session.results.length) continue;
-    if (seen.has(i)) continue;
-    seen.add(i);
-    picked.push(session.results[i]);
-  }
-  if (picked.length === 0) return res.status(400).json({ error: 'NO_SELECTION' });
-
-  const body = buildVcf(picked, sanitizePrefix(prefix));
-
-  res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${vcfFilename()}"`);
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  logger.info({ exported: picked.length }, 'vcf exported');
-  res.send(body);
-});
+/*
+ * אין כאן נקודת קצה לייצוא, וזה מכוון.
+ *
+ * הגרסה הראשונה בנתה את הקובץ בשרת. זו הייתה טעות: השרת לא יודע מי כבר
+ * שמור אצל המשתמש, ולכן הקובץ הכיל אנשי קשר קיימים - והייבוא דרס להם
+ * את השמות. עכשיו ההצלבה מול ספר הטלפונים והרכבת הקובץ קורות בדפדפן,
+ * מול קובץ הייצוא שהמשתמש בוחר. ספר הטלפונים שלו לא עוזב את המכשיר,
+ * והשרת לא מחזיק מספרי טלפון אחרי שליחת התוצאה.
+ */
 
 /** סיום יזום: המשתמש מבקש למחוק הכול עכשיו */
 app.post('/api/end', apiLimiter, async (req, res) => {

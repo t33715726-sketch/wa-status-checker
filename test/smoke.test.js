@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
 import { analyze, formatPhone, isPersonalJid, jidUser } from '../src/analyze.js';
-import { buildVcf, sanitizePrefix } from '../src/vcf.js';
+
+/* contacts.js הוא מודול דפדפן (IIFE שכותב ל-window). טוענים אותו כאן
+   בתוך הקשר מבודד כדי לבדוק אותו בדיוק כפי שהוא רץ אצל המשתמש. */
+const contactsSrc = fs.readFileSync(new URL('../public/contacts.js', import.meta.url), 'utf8');
+const sandbox = { window: {}, TextEncoder };
+vm.createContext(sandbox);
+vm.runInContext(contactsSrc, sandbox);
+const { phoneKeys, isSaved, parseContactsFile, buildVcf, sanitizePrefix } = sandbox.window.ContactBook;
+
+/** בונה ספר טלפונים מרשימת מספרים */
+const book = (numbers) => parseContactsFile(
+  numbers.map((n) => `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL;TYPE=CELL:${n}\r\nEND:VCARD`).join('\r\n')
+).set;
 
 let pass = 0;
 const t = (name, fn) => {
@@ -72,33 +86,130 @@ t('אין כפילויות', () => {
   assert.equal(items.length, 1);
 });
 
-console.log('\nvCard');
+console.log('\nנרמול מספרים');
+t('אותו אדם בשתי צורות = אותו מפתח', () => {
+  const a = phoneKeys('050-123-4567');
+  const b = phoneKeys('+972 50 123 4567');
+  assert.ok(a.some((k) => b.includes(k)), 'חייבת להיות חפיפה בין הצורה המקומית לבינלאומית');
+});
+t('מספר קצר מדי נזרק', () => {
+  // המערכים נוצרים בהקשר ה-vm, ולכן משווים אורך ולא זהות מבנה
+  assert.equal(phoneKeys('12345').length, 0);
+  assert.equal(phoneKeys('').length, 0);
+  assert.equal(phoneKeys(null).length, 0);
+});
+t('isSaved מזהה חוצה-פורמטים', () => {
+  const set = book(['050-123-4567']);
+  assert.equal(isSaved(set, '+972501234567'), true);
+  assert.equal(isSaved(set, '972501234567'), true);
+  assert.equal(isSaved(set, '+972509999999'), false);
+});
+
+console.log('\nקריאת ספר הטלפונים');
+t('קריאת vCard', () => {
+  const vcf = [
+    'BEGIN:VCARD', 'VERSION:3.0', 'FN:אבא',
+    'TEL;TYPE=CELL:+972501111111', 'END:VCARD',
+    'BEGIN:VCARD', 'VERSION:3.0', 'FN:אמא',
+    'TEL;TYPE=CELL:050-222-2222', 'END:VCARD'
+  ].join('\r\n');
+  const { set, numbers } = parseContactsFile(vcf);
+  assert.equal(numbers, 2);
+  assert.equal(isSaved(set, '+972501111111'), true);
+  assert.equal(isSaved(set, '+972502222222'), true);
+});
+
+t('קריאת CSV של גוגל, כולל כמה מספרים בתא אחד', () => {
+  const csv = [
+    'Name,Phone 1 - Type,Phone 1 - Value',
+    'אבא,Mobile,+972501111111',
+    '"כהן, דוד",Mobile,050-222-2222 ::: 03-9999999'
+  ].join('\n');
+  const { set } = parseContactsFile(csv);
+  assert.equal(isSaved(set, '+972501111111'), true);
+  assert.equal(isSaved(set, '+972502222222'), true);
+  assert.equal(isSaved(set, '+97239999999'), true);
+});
+
+t('קובץ בלי מספרים מחזיר קבוצה ריקה', () => {
+  // הדף חוסם המשך במצב הזה. קבוצת "שמורים" ריקה היא בדיוק התקלה
+  // שגרמה לכל אנשי הקשר להיחשב לא-שמורים בגרסה הראשונה.
+  const { set } = parseContactsFile('שלום, זה לא קובץ אנשי קשר');
+  assert.equal(set.size, 0);
+});
+
+console.log('\nvCard לייצוא');
+t('מספר שכבר שמור לא נכנס לקובץ', () => {
+  const saved = book(['050-111-1111']);
+  const out = buildVcf(
+    [
+      { phone: '+972501111111', display: '050-111-1111', pushName: 'אבא' },
+      { phone: '+972502222222', display: '050-222-2222', pushName: 'דני' }
+    ],
+    'סטטוס',
+    saved
+  );
+  assert.equal(out.cards, 1, 'רק דני נכנס');
+  assert.equal(out.skipped, 1, 'אבא נזרק כי הוא כבר שמור');
+  assert.equal(out.text.includes('+972501111111'), false, 'מספר שמור אסור שיופיע בקובץ');
+  assert.match(out.text, /TEL;TYPE=CELL:\+972502222222/);
+});
+
+t('ספר טלפונים שמכיל את כולם מייצר קובץ ריק', () => {
+  const saved = book(['+972501111111', '+972502222222']);
+  const out = buildVcf(
+    [
+      { phone: '+972501111111', display: 'x' },
+      { phone: '+972502222222', display: 'y' }
+    ],
+    '',
+    saved
+  );
+  assert.equal(out.cards, 0);
+  assert.equal(out.text, '');
+});
+
 t('נבנה vCard תקין עם תחילית', () => {
-  const vcf = buildVcf([{ phone: '+972501234567', display: '050-123-4567', pushName: 'דני' }], 'סטטוס');
-  assert.match(vcf, /BEGIN:VCARD/);
-  assert.match(vcf, /VERSION:3\.0/);
-  assert.match(vcf, /FN:סטטוס דני/);
-  assert.match(vcf, /TEL;TYPE=CELL:\+972501234567/);
-  assert.match(vcf, /END:VCARD/);
+  const out = buildVcf(
+    [{ phone: '+972501234567', display: '050-123-4567', pushName: 'דני' }],
+    'סטטוס',
+    book(['050-999-9999'])
+  );
+  assert.match(out.text, /BEGIN:VCARD/);
+  assert.match(out.text, /VERSION:3\.0/);
+  assert.match(out.text, /FN:סטטוס דני/);
+  assert.match(out.text, /TEL;TYPE=CELL:\+972501234567/);
+  assert.match(out.text, /END:VCARD/);
   // בלי BOM: אנשי הקשר של גוגל נכשלים בייבוא אם BEGIN:VCARD אינו התו הראשון
-  assert.notEqual(vcf.charCodeAt(0), 0xfeff, 'אסור BOM');
-  assert.ok(vcf.startsWith('BEGIN:VCARD'), 'הקובץ מתחיל ישירות ב-BEGIN:VCARD');
-  assert.match(vcf, /^CATEGORIES:סטטוס\r$/m, 'תווית קבוצתית לסינון ומחיקה');
+  assert.notEqual(out.text.charCodeAt(0), 0xfeff, 'אסור BOM');
+  assert.ok(out.text.startsWith('BEGIN:VCARD'), 'הקובץ מתחיל ישירות ב-BEGIN:VCARD');
+  assert.match(out.text, /^CATEGORIES:סטטוס\r$/m, 'תווית קבוצתית לסינון ומחיקה');
 });
 
 t('הזרקת שורות לא אפשרית', () => {
   const evil = 'דני\r\nEND:VCARD\r\nBEGIN:VCARD\r\nFN:פישינג';
-  const vcf = buildVcf([{ phone: '+972501234567', display: 'x', pushName: evil }], '');
+  const out = buildVcf([{ phone: '+972501234567', display: 'x', pushName: evil }], '', new Set());
   // רק שורה שמתחילה ב-BEGIN/END היא הוראה אמיתית. טקסט מוברח הוא רק טקסט.
-  assert.equal((vcf.match(/^﻿?BEGIN:VCARD\r$/gm) || []).length, 1);
-  assert.equal((vcf.match(/^END:VCARD\r$/gm) || []).length, 1);
-  const unfolded = vcf.replace(/\r\n /g, '');
+  assert.equal((out.text.match(/^BEGIN:VCARD\r$/gm) || []).length, 1);
+  assert.equal((out.text.match(/^END:VCARD\r$/gm) || []).length, 1);
+  const unfolded = out.text.replace(/\r\n /g, '');
   assert.match(unfolded, /FN:דני\\nEND:VCARD\\nBEGIN:VCARD\\nFN:פישינג/);
 });
 
+t('שורה ארוכה מקופלת לפי התקן', () => {
+  const long = 'א'.repeat(60);
+  const out = buildVcf([{ phone: '+972501234567', display: 'x', pushName: long }], '', new Set());
+  const lines = out.text.split('\r\n');
+  for (const line of lines) {
+    assert.ok(Buffer.byteLength(line, 'utf8') <= 76, `שורה ארוכה מדי: ${line.length}`);
+  }
+  assert.ok(out.text.replace(/\r\n /g, '').includes(`FN:${long}`), 'הפרישה מחזירה את השם המלא');
+});
+
 t('מספר לא תקין נזרק', () => {
-  const vcf = buildVcf([{ phone: 'not-a-number', display: 'x' }], '');
-  assert.equal(vcf.includes('BEGIN:VCARD'), false);
+  const out = buildVcf([{ phone: 'not-a-number', display: 'x' }], '', new Set());
+  assert.equal(out.cards, 0);
+  assert.equal(out.text.includes('BEGIN:VCARD'), false);
 });
 
 t('תחילית מנוקה ומוגבלת באורך', () => {
