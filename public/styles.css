@@ -1,0 +1,476 @@
+/* ============================================================
+   מי לא רואה את הסטטוס שלי - עיצוב
+   RTL, מובייל-first, מצב כהה ובהיר, בלי תלות בגופנים חיצוניים
+   ============================================================ */
+
+:root {
+  color-scheme: light dark;
+
+  --bg: #f4f6f8;
+  --bg-2: #ffffff;
+  --line: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+  --brand: #12876f;
+  --brand-strong: #0e6b58;
+  --brand-soft: #d9f2ea;
+  --accent: #b45309;
+  --danger: #b91c1c;
+  --radius: 16px;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .06);
+  --font: "Segoe UI", "Helvetica Neue", Arial, "Noto Sans Hebrew", "Arial Hebrew", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b141a;
+    --bg-2: #141e24;
+    --line: #223038;
+    --text: #e9edef;
+    --muted: #97a4ad;
+    --brand: #21c08f;
+    --brand-strong: #17a077;
+    --brand-soft: #123329;
+    --accent: #f0b429;
+    --danger: #f87171;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 30px rgba(0, 0, 0, .35);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b141a;
+  --bg-2: #141e24;
+  --line: #223038;
+  --text: #e9edef;
+  --muted: #97a4ad;
+  --brand: #21c08f;
+  --brand-strong: #17a077;
+  --brand-soft: #123329;
+  --accent: #f0b429;
+  --danger: #f87171;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 30px rgba(0, 0, 0, .35);
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.hidden { display: none !important; }
+
+.skip {
+  position: absolute;
+  right: -9999px;
+}
+.skip:focus {
+  right: 12px;
+  top: 12px;
+  background: var(--bg-2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  z-index: 10;
+}
+
+/* ---------- סרגל עליון ---------- */
+.topbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.topbar-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+}
+.brand .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 4px var(--brand-soft);
+}
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* ---------- טיפוגרפיה ---------- */
+.hero-title {
+  font-size: 30px;
+  line-height: 1.25;
+  margin: 28px 0 10px;
+  letter-spacing: -.01em;
+}
+.hl { color: var(--brand); }
+.hero-sub {
+  color: var(--muted);
+  margin: 0 0 22px;
+  font-size: 16px;
+}
+.view-title {
+  font-size: 21px;
+  margin: 24px 0 8px;
+}
+.card-title {
+  font-size: 15px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.hint {
+  color: var(--muted);
+  font-size: 13.5px;
+  margin: 10px 0 0;
+}
+.center { text-align: center; }
+
+/* ---------- כרטיסים ---------- */
+.card {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+  margin: 0 0 16px;
+}
+
+.checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.checks li {
+  position: relative;
+  padding-inline-start: 26px;
+  font-size: 14.5px;
+}
+.checks li::before {
+  content: "✓";
+  position: absolute;
+  inset-inline-start: 0;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+/* ---------- כפתורים ---------- */
+.btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 12px 18px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .06s ease, background-color .15s ease, opacity .15s ease;
+  text-align: center;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-lg { width: 100%; padding: 16px 18px; font-size: 16px; }
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--brand-strong); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+.btn-ghost:hover { border-color: var(--brand); }
+.btn-quiet {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  width: 100%;
+  font-weight: 500;
+  font-size: 14px;
+  margin-top: 8px;
+}
+.btn-note { font-size: 12.5px; font-weight: 400; opacity: .8; }
+
+.choices {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+}
+@media (min-width: 560px) {
+  .choices { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---------- טפסים ---------- */
+.label {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+.input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+}
+.input:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.phone-form { margin-top: 6px; }
+.phone-row { display: flex; gap: 8px; }
+.phone-row .input { flex: 1; }
+.phone-row .btn { flex: 0 0 auto; }
+
+/* ---------- חיבור ---------- */
+.qr {
+  width: 260px;
+  height: 260px;
+  max-width: 100%;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px;
+}
+.steps {
+  text-align: start;
+  margin: 16px auto 0;
+  max-width: 340px;
+  color: var(--muted);
+  font-size: 14.5px;
+  padding-inline-start: 20px;
+}
+.pair-label { color: var(--muted); margin: 0 0 8px; font-size: 14px; }
+.pair-code {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: .22em;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 12px;
+  padding: 14px 10px;
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  margin: 4px auto 12px;
+  border: 3px solid var(--line);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 3s; }
+}
+
+/* ---------- התקדמות ---------- */
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+.bar {
+  height: 100%;
+  width: 8%;
+  border-radius: 999px;
+  background: var(--brand);
+  transition: width .5s ease;
+}
+.counters {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-top: 16px;
+}
+.counter { text-align: center; }
+.counter span {
+  display: block;
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.counter small { color: var(--muted); font-size: 12.5px; }
+
+/* ---------- תוצאות ---------- */
+.result-head { margin-bottom: 14px; }
+.badge-ok {
+  display: inline-block;
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .badge-ok { color: var(--brand); }
+}
+:root[data-theme="dark"] .badge-ok { color: var(--brand); }
+
+.toolbar { display: grid; gap: 10px; margin-bottom: 10px; }
+.tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+}
+.tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 6px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.tab.is-active { background: var(--brand); color: #fff; }
+
+.bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px 10px;
+}
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+.pill {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.row:last-child { border-bottom: none; }
+.row input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--brand); }
+.avatar {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .avatar { color: var(--brand); }
+}
+:root[data-theme="dark"] .avatar { color: var(--brand); }
+.row-main { min-width: 0; flex: 1; }
+.row-name {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* שם לועזי לא יתהפך בתוך עמוד RTL */
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+.row-sub {
+  color: var(--muted);
+  font-size: 13px;
+  direction: ltr;
+  text-align: start;
+  unicode-bidi: plaintext;
+}
+.row-sub-plain { direction: rtl; }
+.tag {
+  font-size: 11.5px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  flex: 0 0 auto;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tag { color: var(--brand); }
+}
+:root[data-theme="dark"] .tag { color: var(--brand); }
+
+.export { margin-top: 4px; }
+.export .btn-lg { margin-top: 12px; }
+
+.foot {
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+  padding-bottom: 32px;
+  padding-top: 8px;
+}

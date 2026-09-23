@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>מי לא רואה את הסטטוס שלי?</title>
+<meta name="description" content="גלה מי שמר את המספר שלך ולא רואה את הסטטוס שלך - והוסף את כולם בלחיצה אחת. בלי שמירת נתונים, בלי סיסמאות." />
+<meta name="theme-color" content="#0b141a" />
+<meta name="robots" content="index,follow" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="מי לא רואה את הסטטוס שלי?" />
+<meta property="og:description" content="גלה מי שמר את המספר שלך ולא רואה את הסטטוס שלך - והוסף את כולם בלחיצה אחת." />
+<meta property="og:locale" content="he_IL" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<a class="skip" href="#main">דלג לתוכן</a>
+
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <div class="brand">
+      <span class="dot" aria-hidden="true"></span>
+      <span>מי לא רואה את הסטטוס שלי?</span>
+    </div>
+    <button type="button" id="themeBtn" class="icon-btn" aria-label="החלפת מצב תצוגה">◐</button>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+
+  <!-- ========== שלב 1: פתיחה ========== -->
+  <section id="viewIntro" class="view">
+    <h1 class="hero-title">מי שמר אותך <span class="hl">ולא רואה</span> את הסטטוס שלך?</h1>
+    <p class="hero-sub">
+      הסטטוס שלך מוצג רק למי ש<strong>אתה</strong> שמרת ביומן הטלפון. מי שמכיר אותך, מתכתב איתך
+      ולא שמור אצלך - פשוט לא רואה כלום. הכלי מוצא בדיוק את האנשים האלה ומייצר קובץ אחד
+      שמוסיף את כולם בבת אחת.
+    </p>
+
+    <div class="card promise">
+      <h2 class="card-title">מה קורה עם המידע שלך</h2>
+      <ul class="checks">
+        <li>החיבור נעשה מול וואטסאפ בלבד, בדיוק כמו וואטסאפ ווב.</li>
+        <li>שום דבר לא נשמר בדיסק ולא במסד נתונים - הכול בזיכרון זמני.</li>
+        <li>ברגע שהרשימה מוכנה, אנחנו מנתקים את עצמנו אוטומטית.</li>
+        <li>הודעות לא נקראות, לא נשלחות הודעות בשמך.</li>
+        <li>סגירת הדף מוחקת הכול מיידית.</li>
+      </ul>
+    </div>
+
+    <div class="choices">
+      <button type="button" id="btnQr" class="btn btn-primary btn-lg">
+        <span class="btn-title">סריקת קוד QR</span>
+        <span class="btn-note">כשהדף פתוח במחשב</span>
+      </button>
+      <button type="button" id="btnPair" class="btn btn-ghost btn-lg">
+        <span class="btn-title">חיבור עם מספר טלפון</span>
+        <span class="btn-note">כשהדף פתוח בנייד</span>
+      </button>
+    </div>
+
+    <form id="phoneForm" class="phone-form hidden" autocomplete="off">
+      <label class="label" for="phone">מספר הטלפון שלך בוואטסאפ</label>
+      <div class="phone-row">
+        <input id="phone" name="phone" class="input" type="tel" inputmode="tel"
+               placeholder="050-000-0000" maxlength="20" required />
+        <button type="submit" class="btn btn-primary">קבלת קוד</button>
+      </div>
+      <p class="hint">נשלח קוד בן 8 תווים שתזין בוואטסאפ במכשיר שלך.</p>
+    </form>
+  </section>
+
+  <!-- ========== שלב 2: חיבור ========== -->
+  <section id="viewConnect" class="view hidden">
+    <h2 class="view-title">חיבור לוואטסאפ</h2>
+
+    <div id="qrBox" class="card center hidden">
+      <img id="qrImg" class="qr" alt="קוד QR לסריקה" width="260" height="260" />
+      <ol class="steps">
+        <li>פתח וואטסאפ בטלפון</li>
+        <li>הגדרות ← <strong>מכשירים מקושרים</strong></li>
+        <li>קישור מכשיר ← סרוק את הקוד</li>
+      </ol>
+    </div>
+
+    <div id="pairBox" class="card center hidden">
+      <p class="pair-label">הזן את הקוד הזה בוואטסאפ</p>
+      <div id="pairCode" class="pair-code" dir="ltr">--------</div>
+      <ol class="steps">
+        <li>פתח וואטסאפ בטלפון</li>
+        <li>הגדרות ← <strong>מכשירים מקושרים</strong></li>
+        <li>קישור מכשיר ← <strong>קישור עם מספר טלפון</strong></li>
+        <li>הזן את הקוד למעלה</li>
+      </ol>
+    </div>
+
+    <div id="waitBox" class="card center">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="waitText">מתחברים...</p>
+    </div>
+
+    <button type="button" class="btn btn-quiet" data-action="restart">ביטול</button>
+  </section>
+
+  <!-- ========== שלב 3: סנכרון ========== -->
+  <section id="viewSync" class="view hidden">
+    <h2 class="view-title">סורקים את אנשי הקשר</h2>
+    <div class="card">
+      <div class="progress"><div id="bar" class="bar"></div></div>
+      <div class="counters">
+        <div class="counter"><span id="cContacts">0</span><small>אנשי קשר</small></div>
+        <div class="counter"><span id="cChats">0</span><small>שיחות</small></div>
+      </div>
+      <p class="hint center">זה לוקח בדרך כלל 10-40 שניות. אל תסגור את הדף.</p>
+    </div>
+  </section>
+
+  <!-- ========== שלב 4: תוצאות ========== -->
+  <section id="viewResults" class="view hidden">
+    <div class="result-head">
+      <h2 class="view-title">נמצאו <span id="gapCount">0</span> אנשים שלא רואים את הסטטוס שלך</h2>
+      <p class="hint" id="resultSub"></p>
+      <p class="badge-ok">התנתקנו מוואטסאפ. הרשימה נשארת אצלך בדף בלבד.</p>
+    </div>
+
+    <div class="toolbar">
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab is-active" data-tab="chat" role="tab">מתכתבים איתך</button>
+        <button type="button" class="tab" data-tab="contact" role="tab">מקבוצות משותפות</button>
+      </div>
+      <input id="search" class="input" type="search" placeholder="חיפוש לפי שם או מספר" />
+    </div>
+
+    <div class="bulkbar">
+      <label class="checkline">
+        <input type="checkbox" id="selectAll" />
+        <span>בחר הכול</span>
+      </label>
+      <span id="selCount" class="pill">0 נבחרו</span>
+    </div>
+
+    <ul id="list" class="list"></ul>
+    <p id="emptyMsg" class="hint center hidden">אין כאן אף אחד. מצוין.</p>
+
+    <div class="card export">
+      <label class="label" for="prefix">תחילית לשם (מומלץ - כדי למצוא ולמחוק אותם בקלות)</label>
+      <input id="prefix" class="input" type="text" maxlength="20" value="סטטוס" />
+      <button type="button" id="btnExport" class="btn btn-primary btn-lg" disabled>
+        הורדת קובץ אנשי קשר
+      </button>
+      <p class="hint">
+        הקובץ נפתח בטלפון ומייבא את כולם ליומן הטלפון. באייפון: שיתוף ← אנשי קשר.
+        באנדרואיד: פתיחה עם אנשי קשר ← ייבוא.
+      </p>
+      <button type="button" class="btn btn-quiet" data-action="restart">סיום ומחיקה</button>
+    </div>
+  </section>
+
+  <!-- ========== שגיאה ========== -->
+  <section id="viewError" class="view hidden">
+    <div class="card center">
+      <h2 class="view-title">משהו השתבש</h2>
+      <p id="errText" class="hint"></p>
+      <button type="button" class="btn btn-primary" data-action="restart">התחלה מחדש</button>
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap foot">
+  <p>הכלי אינו מסונף לוואטסאפ או ל-Meta. השימוש באחריות המשתמש.</p>
+</footer>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
