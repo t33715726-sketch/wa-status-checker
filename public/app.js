@@ -120,6 +120,17 @@
         return;
       }
 
+      // שער שלמות, ולא רק שער קיום. פרסור חלקי מסוכן יותר מפרסור שנכשל:
+      // הוא נראה כמו הצלחה, והאנשים שפוספסו הם בדיוק אלה שיידרסו בייבוא.
+      if (parsed.telLines > 0 && parsed.numbers < parsed.telLines * 0.95) {
+        contactsError(
+          'הקובץ נקרא רק חלקית - זוהו ' + parsed.numbers + ' מספרים מתוך ' +
+          parsed.telLines + ' שדות טלפון. אי אפשר להמשיך ככה, כי מי שפוספס ' +
+          'עלול להידרס בייבוא. שלח לי את הקובץ ונתקן את הקריאה.'
+        );
+        return;
+      }
+
       savedSet = parsed.set;
       savedCount = parsed.numbers;
       $('contactsCount').textContent = String(savedCount);
@@ -358,6 +369,14 @@
      ============================================================ */
 
   function renderResults(d) {
+    // בלי ספר טלפונים אין הצלבה, ורשימה בלי הצלבה היא שקר מסוכן:
+    // היא מציגה אנשים שכבר שמורים כאילו הם פער. קורה כשהמשתמש מבטל
+    // בזמן שתוצאה כבר בדרך.
+    if (!savedSet) {
+      fail('ספר הטלפונים נמחק באמצע, ולכן אי אפשר להצליב. התחל מחדש ובחר את קובץ אנשי הקשר.');
+      return;
+    }
+
     var raw = Array.isArray(d.items) ? d.items : [];
     var source = (d.stats && d.stats.source) || (raw[0] && raw[0].source === 'me' ? 'me' : 'wa');
     sourcesDone[source === 'me' ? 'me' : 'wa'] = true;
@@ -369,7 +388,7 @@
     raw.forEach(function (it) {
       // הסינון האמיתי. שום מקור לא יודע מי שמור אצל המשתמש - רק ספר
       // הטלפונים שלו יודע, והוא נמצא כאן.
-      if (savedSet && window.ContactBook.isSaved(savedSet, it.phone)) {
+      if (window.ContactBook.isSaved(savedSet, it.phone)) {
         removedTotal += 1;
         return;
       }

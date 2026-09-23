@@ -15,7 +15,16 @@
    * מנרמלים את שניהם לאותה צורה: בלי קידומת מדינה ובלי אפס מוביל.
    */
   function phoneKeys(raw) {
-    var digits = String(raw || '').replace(/\D/g, '');
+    var value = String(raw || '');
+
+    // שלוחה או הערה אחרי המספר: "050-1234567 x12", "0501234567,,3", "054-1234 (2)".
+    // בלי הקילוף הזה הספרות של השלוחה נבלעות למספר ויוצרות מפתח שגוי -
+    // כלומר איש קשר שמור שלא מזוהה, ולכן נכתב לקובץ ונדרס.
+    // "x12" נצמד למספר, ולכן \b לא עוזר כאן - דורשים ספרה אחרי הסימון
+    var cut = value.search(/[;,#/|(]|\s*(?:ext\.?|x)\s*\d/i);
+    if (cut > 0) value = value.slice(0, cut);
+
+    var digits = value.replace(/\D/g, '');
     if (digits.length < 6) return [];
 
     var keys = [];
@@ -27,12 +36,22 @@
 
     if (rest.length >= 6) keys.push(rest);
 
-    // מפתח גיבוי: 9 הספרות האחרונות. מרחיב את ההתאמה, ולכן מרחיב את
-    // ההחרגה - וזה הכיוון הבטוח: עדיף לפספס מישהו מאשר לדרוס איש קשר.
-    if (digits.length >= 9) {
-      var tail = digits.slice(-9);
-      if (keys.indexOf(tail) === -1) keys.push(tail);
-    }
+    // מפתחות גיבוי: 9 ו-7 הספרות האחרונות.
+    //
+    // 9 מכסה מספר ישראלי שנשמר בלי קידומת מול מספר בינלאומי מוואטסאפ.
+    // 7 מכסה מדינות עם מספר לאומי בן 8 ספרות - נורבגיה, דנמרק, הונג קונג,
+    // סינגפור - שבהן מפתח 9 לא נוצר כלל.
+    //
+    // זה מרחיב את ההתאמה ולכן מרחיב את ההחרגה. הכיוון הזה הוא הבטוח:
+    // התאמת שווא אומרת שמישהו לא ייכנס לקובץ, והחמצה אומרת שאיש קשר
+    // קיים נדרס. הסיכון להתנגשות אקראית על 7 ספרות בספר של 7000 מספרים
+    // הוא פחות מעשירית האחוז.
+    [9, 7].forEach(function (n) {
+      if (digits.length >= n) {
+        var tail = digits.slice(-n);
+        if (keys.indexOf(tail) === -1) keys.push(tail);
+      }
+    });
     return keys;
   }
 
@@ -45,13 +64,42 @@
     return false;
   }
 
+  /**
+   * כל השורות שהן שדה טלפון ב-vCard.
+   *
+   * חייב לכלול את צורת ה-property המקובץ: אייפון וגוגל מייצאים איש קשר
+   * עם תווית מותאמת ("ווצאפ", "אבא") כ-`item1.TEL:...` עם `item1.X-ABLabel`
+   * בשורה אחריה. רג'קס שדורש שורה שמתחילה ב-TEL מפספס אותם לגמרי -
+   * והאנשים האלה, שכבר שמורים, נכתבים לקובץ ונדרסים בייבוא.
+   */
+  var TEL_LINE = /^(?:[A-Za-z0-9-]+\.)?TEL[^:\r\n]*:(.+)$/gim;
+
+  /** פרישת שורות מקופלות לפי תקן vCard, לפני כל פרסור */
+  function unfold(text) {
+    return String(text || '').replace(/\r?\n[ \t]/g, '');
+  }
+
   /** מחלץ מספרים מקובץ vCard (‎.vcf) */
   function fromVcard(text) {
     var out = [];
-    var re = /^TEL[^:\r\n]*:(.+)$/gim;
     var m;
-    while ((m = re.exec(text)) !== null) out.push(m[1]);
+    TEL_LINE.lastIndex = 0;
+    while ((m = TEL_LINE.exec(text)) !== null) {
+      // שדה אחד עשוי להחזיק כמה מספרים
+      var parts = m[1].split(/:::|\//);
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].replace(/\D/g, '').length >= 6) out.push(parts[i]);
+      }
+    }
     return out;
+  }
+
+  /** כמה שורות טלפון יש בקובץ - לאימות שהפרסור לא פספס */
+  function countTelLines(text) {
+    TEL_LINE.lastIndex = 0;
+    var n = 0;
+    while (TEL_LINE.exec(text) !== null) n += 1;
+    return n;
   }
 
   /** פיצול שורת CSV שמכבד מרכאות */
@@ -115,13 +163,27 @@
    * @returns {{set: Set<string>, numbers: number}}
    */
   function parseContactsFile(text) {
-    var raw = text.indexOf('BEGIN:VCARD') !== -1 ? fromVcard(text) : fromCsv(text);
+    var body = unfold(text);
+    var isVcard = body.indexOf('BEGIN:VCARD') !== -1;
+    var raw = isVcard ? fromVcard(body) : fromCsv(body);
+
     var set = new Set();
+    var withKeys = 0;
     for (var i = 0; i < raw.length; i++) {
       var keys = phoneKeys(raw[i]);
+      if (keys.length) withKeys += 1;
       for (var k = 0; k < keys.length; k++) set.add(keys[k]);
     }
-    return { set: set, numbers: raw.length };
+
+    return {
+      set: set,
+      numbers: withKeys,
+      // נתוני אימות: כמה שדות טלפון היו בקובץ מול כמה באמת נקראו.
+      // פער גדול פירושו פרסור חלקי - בדיוק המצב שבו אנשי קשר קיימים
+      // נחשבים ללא-שמורים ונדרסים בייבוא.
+      telLines: isVcard ? countTelLines(body) : 0,
+      cards: isVcard ? (body.match(/BEGIN:VCARD/g) || []).length : 0
+    };
   }
 
   /* ---------------- בניית קובץ vCard ---------------- */
@@ -212,6 +274,7 @@
 
   window.ContactBook = {
     phoneKeys: phoneKeys,
+    unfold: unfold,
     isSaved: isSaved,
     parseContactsFile: parseContactsFile,
     buildVcf: buildVcf,

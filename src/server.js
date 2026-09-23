@@ -31,7 +31,7 @@ app.use(
         'style-src': ["'self'"],
         'img-src': ["'self'", 'data:'],
         'font-src': ["'self'"],
-        'connect-src': ["'self'"],
+        'connect-src': ["'self'", 'wss:'],
         'object-src': ["'none'"],
         'base-uri': ["'none'"],
         'frame-ancestors': ["'none'"],
@@ -62,7 +62,7 @@ app.get('/api/sources', apiLimiter, (_req, res) => {
   res.json({ whatsapp: true, me: meConfigured() });
 });
 
-app.get('/healthz', (_req, res) => {
+app.get('/healthz', apiLimiter, (_req, res) => {
   res.json({ ok: true, sessions: sessions.size, uptime: Math.round(process.uptime()) });
 });
 
@@ -110,11 +110,82 @@ const io = new SocketServer(server, {
   connectionStateRecovery: { maxDisconnectionDuration: 2 * 60 * 1000 }
 });
 
+/**
+ * ה-IP של הלקוח, לפי אותה מדיניות שאקספרס משתמש בה.
+ *
+ * הערך השמאלי ב-X-Forwarded-For נשלט במלואו על ידי הלקוח. קריאה שלו
+ * פירושה שכל handshake יכול להציג IP אחר, וכל הגבלה לפי IP מתאפסת.
+ * סופרים מהסוף: המזהה שהפרוקסי שלנו הוסיף הוא האחרון.
+ */
 const clientIp = (socket) => {
   const fwd = socket.handshake.headers['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd.length) return fwd.split(',')[0].trim();
+  if (typeof fwd === 'string' && fwd.length) {
+    const chain = fwd.split(',').map((v) => v.trim()).filter(Boolean);
+    const hops = Math.max(1, config.trustProxy);
+    const idx = chain.length - hops;
+    if (idx >= 0 && chain[idx]) return chain[idx];
+    if (chain.length) return chain[0];
+  }
   return socket.handshake.address || 'unknown';
 };
+
+/**
+ * הגבלת קצב לאירועי סוקט. socket.io לא עובר במידלוור של אקספרס,
+ * ולכן express-rate-limit לא נוגע בו בכלל.
+ */
+const startHits = new Map();
+
+const tooManyStarts = (ip) => {
+  const now = Date.now();
+  const win = config.limits.startWindowMs;
+  const hits = (startHits.get(ip) || []).filter((t) => now - t < win);
+  if (hits.length >= config.limits.startMax) {
+    startHits.set(ip, hits);
+    return true;
+  }
+  hits.push(now);
+  startHits.set(ip, hits);
+  return false;
+};
+
+// ניקוי תקופתי כדי שהמפה לא תגדל בלי גבול
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, hits] of startHits) {
+    const live = hits.filter((t) => now - t < config.limits.startWindowMs);
+    if (live.length) startHits.set(ip, live);
+    else startHits.delete(ip);
+  }
+}, 60_000).unref?.();
+
+/**
+ * הגבלה לכל מספר יעד, בנפרד מהגבלת ה-IP.
+ * בלעדיה אפשר להפציץ קורבן ב-SMS על חשבון בעל המוצר.
+ */
+const otpHits = new Map();
+
+const tooManyOtps = (phone) => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const hits = (otpHits.get(phone) || []).filter((t) => now - t < day);
+  if (hits.length >= config.me.maxOtpPerPhone) {
+    otpHits.set(phone, hits);
+    return true;
+  }
+  hits.push(now);
+  otpHits.set(phone, hits);
+  return false;
+};
+
+setInterval(() => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  for (const [phone, hits] of otpHits) {
+    const live = hits.filter((t) => now - t < day);
+    if (live.length) otpHits.set(phone, live);
+    else otpHits.delete(phone);
+  }
+}, 10 * 60_000).unref?.();
 
 const normalizePhone = (value) => {
   if (typeof value !== 'string') return null;
@@ -155,6 +226,12 @@ io.on('connection', (socket) => {
   socket.on('start', async ({ phone } = {}) => {
     if (boundId) return;
 
+    if (tooManyStarts(ip)) {
+      return socket.emit('failed', {
+        code: 'RATE_LIMITED',
+        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
+      });
+    }
     if (sessions.atCapacity()) {
       return socket.emit('failed', {
         code: 'BUSY',
@@ -189,6 +266,23 @@ io.on('connection', (socket) => {
       return socket.emit('failed', {
         code: 'ME_NOT_CONFIGURED',
         message: 'מסלול זה עדיין לא זמין. בינתיים אפשר להשתמש בסריקת וואטסאפ.'
+      });
+    }
+    if (tooManyStarts(ip)) {
+      return socket.emit('failed', {
+        code: 'RATE_LIMITED',
+        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
+      });
+    }
+    // הגבלה לכל מספר יעד: OTP נשלח לטלפון של מישהו, לא של השולח
+    const target = normalizePhone(phone);
+    if (!target) {
+      return socket.emit('failed', { code: 'BAD_PHONE', message: 'המספר לא תקין. בדוק ונסה שוב.' });
+    }
+    if (tooManyOtps(target)) {
+      return socket.emit('failed', {
+        code: 'OTP_LIMIT',
+        message: 'נשלחו כבר מספר קודים למספר הזה היום. נסה שוב מחר.'
       });
     }
     if (sessions.atCapacity()) {
@@ -226,6 +320,9 @@ io.on('connection', (socket) => {
     } catch (err) {
       logger.error({ err: err?.message }, 'me verify failed');
       socket.emit('failed', { code: 'VERIFY_FAILED', message: 'האימות נכשל. נסה שוב.' });
+      // לא משאירים סשן עם טוקן חי תלוי באוויר עד ה-sweeper
+      await sessions.destroy(boundId).catch(() => {});
+      boundId = null;
     }
   });
 

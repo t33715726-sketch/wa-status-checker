@@ -10,7 +10,7 @@ const contactsSrc = fs.readFileSync(new URL('../public/contacts.js', import.meta
 const sandbox = { window: {}, TextEncoder };
 vm.createContext(sandbox);
 vm.runInContext(contactsSrc, sandbox);
-const { phoneKeys, isSaved, parseContactsFile, buildVcf, sanitizePrefix } = sandbox.window.ContactBook;
+const { phoneKeys, isSaved, parseContactsFile, buildVcf, sanitizePrefix, unfold } = sandbox.window.ContactBook;
 
 /** בונה ספר טלפונים מרשימת מספרים */
 const book = (numbers) => parseContactsFile(
@@ -144,6 +144,75 @@ t('קובץ בלי מספרים מחזיר קבוצה ריקה', () => {
   // שגרמה לכל אנשי הקשר להיחשב לא-שמורים בגרסה הראשונה.
   const { set } = parseContactsFile('שלום, זה לא קובץ אנשי קשר');
   assert.equal(set.size, 0);
+});
+
+console.log('\nפרסור עמיד - הממצאים שאהרן מצא');
+t('item1.TEL מאייפון/גוגל נקרא (תווית מותאמת)', () => {
+  // הצורה הזו היא ייצוא רגיל של איש קשר עם תווית מותאמת.
+  // רג'קס שדורש שורה שמתחילה ב-TEL מפספס אותה, והאדם הזה - שכבר
+  // שמור - נכתב לקובץ ונדרס בייבוא. זה היה הבאג.
+  const vcf = [
+    'BEGIN:VCARD', 'VERSION:3.0', 'FN:אבא',
+    'item1.TEL:+972501111111', 'item1.X-ABLabel:ווצאפ', 'END:VCARD'
+  ].join('\r\n');
+  const { set, numbers, telLines } = parseContactsFile(vcf);
+  assert.equal(numbers, 1);
+  assert.equal(telLines, 1, 'הספירה לאימות שלמות חייבת לראות את השורה');
+  assert.equal(isSaved(set, '+972501111111'), true);
+});
+
+t('קובץ מעורב: TEL רגיל וגם item#.TEL', () => {
+  const vcf = [
+    'BEGIN:VCARD','VERSION:3.0','FN:א','TEL;TYPE=CELL:+972501111111','END:VCARD',
+    'BEGIN:VCARD','VERSION:3.0','FN:ב','item1.TEL;type=pref:+972502222222','END:VCARD',
+    'BEGIN:VCARD','VERSION:3.0','FN:ג','item2.TEL:050-333-3333','END:VCARD'
+  ].join('\r\n');
+  const { set, numbers, telLines } = parseContactsFile(vcf);
+  assert.equal(telLines, 3);
+  assert.equal(numbers, 3, 'כל השלושה, לא רק הראשון');
+  ['+972501111111','+972502222222','+972503333333'].forEach((n) =>
+    assert.equal(isSaved(set, n), true, n));
+});
+
+t('שלוחה והערה נקלפות ולא נבלעות למספר', () => {
+  // "050-123-4567 x12" -> בלי קילוף הספרות 12 נדבקות ויוצרות מפתח שגוי
+  [['050-123-4567 x12'], ['0501234567 ext. 5'], ['050-123-4567 (2)'],
+   ['0501234567,,3'], ['050-123-4567/052-999-9999']].forEach(([raw]) => {
+    const { set } = parseContactsFile(
+      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${raw}\r\nEND:VCARD`);
+    assert.equal(isSaved(set, '+972501234567'), true, raw);
+  });
+});
+
+t('מדינה עם מספר לאומי בן 8 ספרות', () => {
+  // נורבגיה, הונג קונג: מפתח 9 הספרות לא נוצר, ולכן צריך מפתח 7
+  const cases = [['12 34 56 78', '+4712345678'], ['9123 4567', '+85291234567']];
+  cases.forEach(([inBook, fromWa]) => {
+    const { set } = parseContactsFile(
+      `BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:${inBook}\r\nEND:VCARD`);
+    assert.equal(isSaved(set, fromWa), true, `${inBook} מול ${fromWa}`);
+  });
+});
+
+t('שורה מקופלת נפרשת לפני הפרסור', () => {
+  const vcf = 'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL;TYPE=CELL:+97250\r\n 1234567\r\nEND:VCARD';
+  assert.equal(unfold(vcf).includes('+972501234567'), true);
+  const { set, numbers } = parseContactsFile(vcf);
+  assert.equal(numbers, 1);
+  assert.equal(isSaved(set, '+972501234567'), true, 'לא חצי מספר');
+});
+
+t('נתוני אימות שלמות מוחזרים לדף', () => {
+  const vcf = [
+    'BEGIN:VCARD','VERSION:3.0','FN:א','TEL:+972501111111','END:VCARD',
+    'BEGIN:VCARD','VERSION:3.0','FN:ב','EMAIL:b@x.com','END:VCARD'
+  ].join('\r\n');
+  const r = parseContactsFile(vcf);
+  assert.equal(r.cards, 2);
+  assert.equal(r.telLines, 1, 'איש קשר בלי טלפון לא נספר כשדה טלפון');
+  assert.equal(r.numbers, 1);
+  // הדף חוסם כש-numbers < telLines * 0.95
+  assert.ok(r.numbers >= r.telLines * 0.95);
 });
 
 console.log('\nvCard לייצוא');

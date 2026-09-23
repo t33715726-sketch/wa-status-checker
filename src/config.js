@@ -50,9 +50,7 @@ export const config = {
     startMax: int(process.env.START_MAX, 12),
     // בקשות API כלליות
     apiWindowMs: int(process.env.API_WINDOW_MS, 60 * 1000),
-    apiMax: int(process.env.API_MAX, 60),
-    // תקרת אנשי קשר בייצוא אחד
-    maxExport: int(process.env.MAX_EXPORT, 3000)
+    apiMax: int(process.env.API_MAX, 60)
   },
 
   /**
@@ -73,6 +71,8 @@ export const config = {
     otpWaitMs: int(process.env.ME_OTP_WAIT_MS, 5 * 60 * 1000),
     // תקרת ניסיונות קוד לפני שהסשן נסגר
     maxCodeAttempts: int(process.env.ME_MAX_CODE_ATTEMPTS, 5),
+    // כמה קודים מותר לשלוח לאותו מספר יעד ביממה - הגנה מהפצצת SMS
+    maxOtpPerPhone: int(process.env.ME_MAX_OTP_PER_PHONE, 3),
     paths: {
       requestOtp: process.env.ME_PATH_REQUEST_OTP || 'auth/otp',
       verifyOtp: process.env.ME_PATH_VERIFY_OTP || 'auth/verify',
