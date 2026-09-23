@@ -53,6 +53,9 @@ export class WaSession {
     this.contacts = new Map();
     this.chats = new Map();
     this.incoming = new Set();
+    // שמות תצוגה שנאספים תוך כדי: pushName מהודעות נכנסות ושם השיחה.
+    // בלי זה רוב הרשומות יוצאות עם מספר בלבד, וקשה לזהות מי זה.
+    this.names = new Map();
 
     this.results = null;
     this.stats = null;
@@ -186,6 +189,17 @@ export class WaSession {
     this.lastEventAt = Date.now();
   }
 
+  /** שומר שם תצוגה ראשון שנראה עבור מספר. לא דורס שם קיים. */
+  rememberName(jid, name) {
+    if (typeof name !== 'string') return;
+    const clean = name.trim();
+    if (!clean || clean.length > 80) return;
+    const user = jidUser(jid);
+    if (!user || this.names.has(user)) return;
+    if (this.names.size >= MAX_CONTACTS) return;
+    this.names.set(user, clean);
+  }
+
   mergeContacts(list, partial = false) {
     if (!Array.isArray(list)) return;
     for (const c of list) {
@@ -212,6 +226,7 @@ export class WaSession {
       if (this.chats.size >= MAX_CHATS && !this.chats.has(jid)) continue;
       const prev = this.chats.get(jid);
       this.chats.set(jid, prev ? { ...prev, ...chat } : chat);
+      this.rememberName(jid, chat?.name);
     }
   }
 
@@ -224,6 +239,7 @@ export class WaSession {
       if (!isPersonalJid(jid)) continue;
       if (this.incoming.size >= MAX_CHATS) break;
       this.incoming.add(jidUser(jid));
+      this.rememberName(jid, msg?.pushName || msg?.verifiedBizName);
     }
   }
 
@@ -315,6 +331,7 @@ export class WaSession {
       contacts: this.contacts,
       chats: this.chats,
       incoming: this.incoming,
+      names: this.names,
       meJid
     });
 
@@ -328,6 +345,7 @@ export class WaSession {
     this.contacts.clear();
     this.chats.clear();
     this.incoming.clear();
+    this.names.clear();
 
     this.setState('done', {
       stats,

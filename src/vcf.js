@@ -69,12 +69,16 @@ export function buildVcf(items, prefix = '') {
     lines.push(fold(`N:;${esc(name)};;;`));
     lines.push(fold(`FN:${esc(name)}`));
     lines.push(fold(`TEL;TYPE=CELL:+${digits}`));
+    if (p) lines.push(fold(`CATEGORIES:${esc(p)}`));
     lines.push(fold(`NOTE:${esc('נוסף אוטומטית כדי לראות את הסטטוס')}`));
     lines.push('END:VCARD');
   }
 
-  // \r\n לפי התקן + BOM כדי שאנדרואיד/iOS יזהו עברית כ-UTF-8
-  return `﻿${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`;
+  // \r\n לפי התקן, בלי BOM.
+  // אנשי הקשר של גוגל דורשים ש-BEGIN:VCARD יהיה התו הראשון ממש בקובץ;
+  // BOM לפניו מפיל את הייבוא כולו. UTF-8 בלי BOM הוא ממילא הקידוד
+  // התקני של vCard 3.0, ועברית עוברת בו מצוין.
+  return `${lines.join('\r\n')}${lines.length ? '\r\n' : ''}`;
 }
 
 export function vcfFilename() {

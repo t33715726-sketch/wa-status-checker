@@ -80,7 +80,10 @@ t('נבנה vCard תקין עם תחילית', () => {
   assert.match(vcf, /FN:סטטוס דני/);
   assert.match(vcf, /TEL;TYPE=CELL:\+972501234567/);
   assert.match(vcf, /END:VCARD/);
-  assert.equal(vcf.charCodeAt(0), 0xfeff, 'BOM לתמיכה בעברית');
+  // בלי BOM: אנשי הקשר של גוגל נכשלים בייבוא אם BEGIN:VCARD אינו התו הראשון
+  assert.notEqual(vcf.charCodeAt(0), 0xfeff, 'אסור BOM');
+  assert.ok(vcf.startsWith('BEGIN:VCARD'), 'הקובץ מתחיל ישירות ב-BEGIN:VCARD');
+  assert.match(vcf, /^CATEGORIES:סטטוס\r$/m, 'תווית קבוצתית לסינון ומחיקה');
 });
 
 t('הזרקת שורות לא אפשרית', () => {

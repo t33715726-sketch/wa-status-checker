@@ -65,9 +65,11 @@ const cleanName = (v) => {
  * @param {Map<string, object>} input.contacts  jid -> contact
  * @param {Map<string, object>} input.chats     jid -> chat
  * @param {Set<string>} input.incoming          jidים ששלחו לך הודעה
+ * @param {Map<string, string>} [input.names]    שמות תצוגה שנאספו מהודעות ומשיחות
  * @param {string} input.meJid                  ה-JID שלך
  */
-export function analyze({ contacts, chats, incoming, meJid }) {
+export function analyze({ contacts, chats, incoming, names, meJid }) {
+  const nameHints = names instanceof Map ? names : new Map();
   const me = jidUser(meJid || '');
 
   /** jidים ששמרת ביומן הטלפון */
@@ -86,7 +88,10 @@ export function analyze({ contacts, chats, incoming, meJid }) {
     seen.add(user);
 
     const contact = contacts.get(`${user}${PERSONAL_SUFFIX}`) || contacts.get(jid) || {};
-    const pushName = cleanName(contact.notify) || cleanName(contact.verifiedName);
+    const pushName =
+      cleanName(contact.notify) ||
+      cleanName(contact.verifiedName) ||
+      cleanName(nameHints.get(user));
     const wroteToYou = incoming.has(user);
 
     results.push({
