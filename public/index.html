@@ -136,24 +136,34 @@
     <p class="step-mark">שלב 3 מתוך 3</p>
     <h2 class="view-title">מי שמר את המספר שלך</h2>
 
-    <form id="mePhoneForm" class="phone-form" autocomplete="off">
-      <label class="label" for="mePhone">מספר הטלפון שלך</label>
-      <div class="phone-row">
-        <input id="mePhone" name="mePhone" class="input" type="tel" inputmode="tel"
-               placeholder="050-000-0000" maxlength="20" required />
-        <button type="submit" class="btn btn-primary">שליחת קוד</button>
-      </div>
-      <p class="hint">הקוד מגיע אליך בוואטסאפ. הוא חד-פעמי ולא נשמר אצלנו.</p>
-    </form>
+    <div class="card">
+      <h3 class="card-title">איך משיגים את הקוד</h3>
+      <ol class="steps steps-wide">
+        <li>ודא שאפליקציית <strong>Me</strong> מותקנת ומסונכרנת אצלך</li>
+        <li>שלח את המילה <strong>Connectme</strong> לבוט של Me בוואטסאפ</li>
+        <li>תקבל בחזרה הודעה עם <strong>קוד בן 6 ספרות</strong></li>
+        <li>הזן כאן את המספר שלך ואת הקוד</li>
+      </ol>
+      <a id="meBotLink" class="btn btn-ghost btn-lg" target="_blank" rel="noopener noreferrer" href="#">
+        <span class="btn-title">פתח את הבוט בוואטסאפ</span>
+        <span class="btn-note">ההודעה מוכנה, רק ללחוץ שלח</span>
+      </a>
+      <p class="hint">
+        הקוד מגיע אליך ישירות מ-Me. אנחנו לא שולחים אותו ולא שומרים אותו.
+      </p>
+    </div>
 
-    <form id="meCodeForm" class="phone-form hidden" autocomplete="off">
-      <label class="label" for="meCode">הקוד שקיבלת ב-<span id="meSentTo" dir="ltr"></span></label>
-      <div class="phone-row">
-        <input id="meCode" name="meCode" class="input" type="text" inputmode="numeric"
-               dir="ltr" placeholder="123456" maxlength="8" required />
-        <button type="submit" class="btn btn-primary">אישור</button>
-      </div>
-      <p id="meCodeErr" class="err-line hidden"></p>
+    <form id="meForm" class="card" autocomplete="off">
+      <label class="label" for="mePhone">מספר הטלפון שלך</label>
+      <input id="mePhone" name="mePhone" class="input" type="tel" inputmode="tel"
+             placeholder="050-000-0000" maxlength="20" required />
+
+      <label class="label" for="meCode" style="margin-top:12px">הקוד שקיבלת מ-Me</label>
+      <input id="meCode" name="meCode" class="input" type="text" inputmode="numeric"
+             dir="ltr" placeholder="123456" maxlength="8" required />
+
+      <p id="meCodeErr" class="err-line hidden" style="margin-top:12px"></p>
+      <button type="submit" class="btn btn-primary btn-lg" style="margin-top:14px">חפש מי שמר אותי</button>
     </form>
 
     <div id="meWait" class="card center hidden">

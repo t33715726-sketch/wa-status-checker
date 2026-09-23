@@ -206,13 +206,46 @@ t('vCard 4.0 עם tel: URI', () => {
   assert.equal(isSaved(set, '+972544938217'), true);
 });
 
-t('שער ה-CSV יורה כשעמודת נייד לא מזוהה', () => {
-  // המכנה נמדד מהקלט ולא מהתוצר, אחרת היחס 1.000 תמיד
-  const { numbers, telLines } = parseContactsFile(
-    'Name,Some Unknown Column\nדני,0501234567\nרינה,0502222222\nיוסי,0503333333');
-  assert.ok(telLines >= 3, 'המכנה סופר תאים מהקלט הגולמי');
-  assert.ok(numbers >= telLines * 0.95 || numbers < telLines,
-    'כשעמודה נופלת היחס חייב לרדת');
+t('CSV של גוגל ואאוטלוק לא נחסם בגלל מיקוד ותאריך', () => {
+  // מיקוד (7 ספרות) ותאריך לידה נספרו קודם כשדות טלפון, המכנה
+  // התנפח פי שלושה, והקובץ נחסם. זיהוי לפי תוכן עמודה פותר.
+  const num = (i) => `+9725449${String(38217 + i).padStart(5, '0')}`;
+  let g = 'Name,Birthday,Postal Code,Phone 1 - Value,E-mail 1 - Value\n';
+  for (let i = 0; i < 30; i++) g += `איש${i},1980-12-05,672123${i % 10},${num(i)},a@b.com\n`;
+  const r = parseContactsFile(g);
+  assert.equal(r.unparsed, 0);
+  assert.ok(r.numbers >= r.telLines * 0.95, `יחס ${r.numbers}/${r.telLines} — חסימת שווא`);
+  assert.equal(isSaved(r.set, num(5)), true);
+});
+
+t('עמודת טלפון שלא מזוהה בכותרת נקראת לפי תוכן', () => {
+  const num = (i) => `+9725449${String(38217 + i).padStart(5, '0')}`;
+  let u = 'Name,Column X\n';
+  for (let i = 0; i < 20; i++) u += `x,${num(i)}\n`;
+  const r = parseContactsFile(u);
+  assert.ok(r.numbers >= 20, 'העמודה נקראה למרות כותרת לא מוכרת');
+  assert.equal(isSaved(r.set, num(3)), true);
+});
+
+t('מספר שני שנעלם בשדה — השער יורה', () => {
+  // "050-123-4567 - 03-6123456": אחד נקרא, השני מתאדה בלי שאף
+  // מונה יבחין. זו הדליפה שנשארה פתוחה אחרי ארבעה סבבים.
+  const { unparsed, numbers } = parseContactsFile(
+    'BEGIN:VCARD\r\nVERSION:3.0\r\nFN:x\r\nTEL:050-123-4567 - 03-6123456\r\nEND:VCARD');
+  assert.ok(unparsed > 0, `נמצאו ${numbers} מספרים והשאר נעלם בשקט`);
+});
+
+t('המנתח חייב להיות טעון — כשל סגור', () => {
+  // בלי הספרייה הקוד היה נופל לניחוש לפי ספרות, בלי שום סימן
+  const bare = { TextEncoder };
+  bare.globalThis = bare;
+  bare.window = bare;
+  vm.createContext(bare);
+  vm.runInContext(contactsSrc, bare);
+  assert.throws(
+    () => bare.window.ContactBook.parseContactsFile('BEGIN:VCARD\r\nTEL:050-123-4567\r\nEND:VCARD'),
+    /PHONE_PARSER_MISSING/
+  );
 });
 
 t('שלוחה והערה נקלפות ולא נבלעות למספר', () => {
@@ -312,7 +345,12 @@ t('השער לא יורה על ייצוא לגיטימי', () => {
 });
 
 t('גם ל-CSV יש שער שלמות', () => {
-  const { telLines } = parseContactsFile('Name,Phone 1 - Value\nדני,"0501234567"');
+  // המכנה נמדד לפי עמודות שזוהו כטלפון מהתוכן. שורה אחת לא מספיקה
+  // לזיהוי עמודה, ולכן בודקים על קובץ בגודל אמיתי.
+  const num = (i) => `+9725449${String(38217 + i).padStart(5, '0')}`;
+  let csv = 'Name,Phone 1 - Value\n';
+  for (let i = 0; i < 12; i++) csv += `דני${i},"${num(i)}"\n`;
+  const { telLines } = parseContactsFile(csv);
   assert.ok(telLines > 0, 'בלי מונה שדות השער האחוזי מדולג ב-CSV');
 });
 

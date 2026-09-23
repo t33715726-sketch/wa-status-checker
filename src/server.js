@@ -267,7 +267,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('me:start', async ({ phone } = {}) => {
+  socket.on('me:start', async ({ phone, code } = {}) => {
     if (boundId) return;
 
     if (!meConfigured()) {
@@ -299,11 +299,11 @@ io.on('connection', (socket) => {
         message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
       });
     }
-    // הגבלה לכל מספר יעד: ה-OTP נשלח לטלפון של מישהו, לא של השולח
+    // הגבלה לכל מספר יעד: מונעת ניסיונות קוד חוזרים על מספר של מישהו אחר
     if (tooManyOtps(target)) {
       return socket.emit('failed', {
         code: 'OTP_LIMIT',
-        message: 'נשלחו כבר מספר קודים למספר הזה היום. נסה שוב מחר.'
+        message: 'יותר מדי ניסיונות על המספר הזה היום. נסה שוב מחר.'
       });
     }
 
@@ -313,7 +313,7 @@ io.on('connection', (socket) => {
       session.emit = emitterFor(session);
       bind(session);
       socket.emit('session', { sessionId: session.id, source: 'me' });
-      await session.start(target);
+      await session.start(target, code);
     } catch (err) {
       logger.error({ err: err?.message }, 'me session start failed');
       if (session) await sessions.destroy(session.id);

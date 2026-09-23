@@ -33,6 +33,9 @@
 
   // ייצוא אייפון עם תמונות מוטמעות מגיע למאות MB. הפרסור עצמו מהיר
   // (22ms על ייצוא של 9500 אנשי קשר), אז התקרה היא רק הגנה מקובץ שגוי.
+  /** הבוט שמנפיק את הקוד. המשתמש שולח לו Connectme ומקבל 6 ספרות. */
+  var ME_BOT_URL = 'https://wa.me/447427928793?text=Connectme';
+
   var MAX_FILE_BYTES = 200 * 1024 * 1024;
 
   var views = {
@@ -206,9 +209,11 @@
       return;
     }
     $('srcNote').classList.add('hidden');
-    $('meCodeForm').classList.add('hidden');
     $('meWait').classList.add('hidden');
-    $('mePhoneForm').classList.remove('hidden');
+    $('meForm').classList.remove('hidden');
+    $('meCodeErr').classList.add('hidden');
+    // קישור מוכן לבוט, עם ההודעה כבר בפנים
+    $('meBotLink').href = ME_BOT_URL;
     show('me');
     $('mePhone').focus();
   });
@@ -256,27 +261,21 @@
 
       /* --- מצבי Me --- */
       } else if (d.state === 'otp') {
+        // הקוד לא התקבל - חוזרים לטופס עם הסבר
         show('me');
-        $('mePhoneForm').classList.add('hidden');
         $('meWait').classList.add('hidden');
-        $('meCodeForm').classList.remove('hidden');
-        $('meSentTo').textContent = d.sentTo || '';
+        $('meForm').classList.remove('hidden');
         var err = $('meCodeErr');
-        if (d.error) {
-          err.textContent = d.error + (d.attemptsLeft != null ? ' נשארו ' + d.attemptsLeft + ' ניסיונות.' : '');
-          err.classList.remove('hidden');
-        } else {
-          err.classList.add('hidden');
-        }
+        err.textContent = d.error || 'הקוד לא נכון. שלח Connectme לבוט שוב וקבל קוד חדש.';
+        err.classList.remove('hidden');
         $('meCode').value = '';
         $('meCode').focus();
       } else if (d.state === 'verifying' || d.state === 'fetching') {
         show('me');
-        $('mePhoneForm').classList.add('hidden');
-        $('meCodeForm').classList.add('hidden');
+        $('meForm').classList.add('hidden');
         $('meWait').classList.remove('hidden');
         $('meWaitText').textContent =
-          d.state === 'verifying' ? 'מאמתים את הקוד...' : 'מביאים את הרשימה...';
+          d.state === 'verifying' ? 'מאמתים מול Me...' : 'מביאים את הרשימה...';
 
       /* --- משותף --- */
       } else if (d.state === 'done') {
@@ -327,25 +326,22 @@
      שלב 3א: מי שמר אותי
      ============================================================ */
 
-  $('mePhoneForm').addEventListener('submit', function (e) {
+  $('meForm').addEventListener('submit', function (e) {
     e.preventDefault();
     if (!requireContacts()) return;
-    var v = $('mePhone').value.replace(/\D/g, '');
-    if (v.length < 8) { $('mePhone').focus(); return; }
 
-    $('mePhoneForm').classList.add('hidden');
-    $('meCodeForm').classList.add('hidden');
+    var phone = $('mePhone').value.replace(/\D/g, '');
+    var code = $('meCode').value.replace(/\D/g, '');
+    if (phone.length < 8) { $('mePhone').focus(); return; }
+    if (code.length < 4) { $('meCode').focus(); return; }
+
+    $('meCodeErr').classList.add('hidden');
+    $('meForm').classList.add('hidden');
     $('meWait').classList.remove('hidden');
-    $('meWaitText').textContent = 'שולחים קוד...';
+    $('meWaitText').textContent = 'מביאים את הרשימה...';
 
-    connectSocket().emit('me:start', { phone: v });
-  });
-
-  $('meCodeForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var v = $('meCode').value.replace(/\D/g, '');
-    if (v.length < 4) { $('meCode').focus(); return; }
-    connectSocket().emit('me:verify', { code: v });
+    // המשתמש כבר אימת את עצמו מול Me וקיבל קוד. השרת רק מצליב איתו.
+    connectSocket().emit('me:start', { phone: phone, code: code });
   });
 
   /* ============================================================
@@ -665,8 +661,7 @@
     $('srcWa').classList.remove('is-done');
 
     $('phoneForm').classList.add('hidden');
-    $('mePhoneForm').classList.remove('hidden');
-    $('meCodeForm').classList.add('hidden');
+    $('meForm').classList.remove('hidden');
     $('meWait').classList.add('hidden');
     $('meCodeErr').classList.add('hidden');
     $('mePhone').value = '';

@@ -118,18 +118,19 @@ export async function requestOtp(phone) {
 }
 
 /**
- * מאמת את הקוד ומחזיר טוקן לסשן של המשתמש.
- * @param {string} challengeId
- * @param {string} code
+ * מאמת מול הספק את הקוד שהמשתמש קיבל מהבוט שלו, ומחזיר טוקן.
+ * @param {string} phone מספר המשתמש
+ * @param {string} code הקוד שהבוט שלח לו
  */
-export async function verifyOtp(challengeId, code) {
+export async function verifyOtp(phone, code) {
   const clean = String(code || '').replace(/\D/g, '');
   if (clean.length < 4 || clean.length > 8) {
     throw new ProviderError('BAD_CODE', 'הקוד לא תקין. הוא בן 4 עד 8 ספרות.');
   }
 
+  // המשתמש קיבל את הקוד מהבוט של הספק. מציגים טלפון+קוד ומבקשים הרשאה.
   const data = await call(config.me.paths.verifyOtp, {
-    body: { challenge_id: challengeId, code: clean }
+    body: { phone_number: normalizeMsisdn(phone), activation_code: clean }
   });
 
   const token = data?.access_token || data?.token || data?.jwt;

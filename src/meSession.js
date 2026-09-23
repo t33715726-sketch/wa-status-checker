@@ -48,60 +48,47 @@ export class MeSession {
     this.emit('state', { state, ...(payload || {}) });
   }
 
-  /** שלב 1: בקשת קוד חד-פעמי על המספר של המשתמש */
-  async start(phone) {
+  /**
+   * המשתמש מגיע עם טלפון וקוד שכבר קיבל מהבוט של Me.
+   *
+   * אנחנו לא שולחים קוד ולא מנפיקים אותו - המשתמש אימת את עצמו
+   * ישירות מול Me, והקוד הוא שלו. השרת רק מציג אותו לספק ומבקש
+   * את הרשימה. זה מקצר את המסלול ומוריד מאיתנו אחריות על שליחת
+   * הודעות למספרים שאינם שלנו.
+   */
+  async start(phone, code) {
     if (!me.isConfigured()) {
       return this.fail('ME_NOT_CONFIGURED', 'מסלול זה עדיין לא זמין. בינתיים אפשר להשתמש בסריקת וואטסאפ.');
     }
 
-    try {
-      const { challengeId, sentTo } = await me.requestOtp(phone);
-      this.challengeId = challengeId;
-      this.phone = sentTo;
-    } catch (err) {
-      return this.fail(err?.code || 'ME_ERROR', err?.message || 'לא הצלחנו לשלוח קוד. נסה שוב.');
+    this.phone = me.normalizeMsisdn(phone);
+    if (!this.phone) {
+      return this.fail('BAD_PHONE', 'המספר לא תקין. בדוק ונסה שוב.');
     }
 
-    this.setState('otp', { sentTo: formatPhone(this.phone) });
-
-    this.otpTimer = setTimeout(() => {
-      if (!this.finished && this.state === 'otp') {
-        this.fail('OTP_TIMEOUT', 'הקוד פג. אפשר להתחיל מחדש.');
-      }
-    }, config.me.otpWaitMs);
-  }
-
-  /** שלב 2: אימות הקוד, ואז משיכת הרשימה */
-  async verify(code) {
-    if (this.finished || this.closed) return;
-    if (this.state !== 'otp') return;
-
-    this.attempts += 1;
-    if (this.attempts > config.me.maxCodeAttempts) {
-      return this.fail('TOO_MANY_ATTEMPTS', 'יותר מדי ניסיונות. התחל מחדש.');
+    const clean = String(code || '').replace(/\D/g, '');
+    if (clean.length < 4 || clean.length > 8) {
+      return this.setState('otp', { error: 'הקוד לא תקין. הוא בן 6 ספרות.' });
     }
 
     this.setState('verifying');
 
     try {
-      const { token } = await me.verifyOtp(this.challengeId, code);
+      const { token } = await me.verifyOtp(this.phone, clean);
       this.token = token;
     } catch (err) {
       const code2 = err?.code || 'ME_ERROR';
-      // קוד שגוי הוא לא סוף הסשן - נותנים לו לנסות שוב
-      if (code2 === 'BAD_CODE' || err?.status === 400) {
-        this.setState('otp', {
-          sentTo: formatPhone(this.phone),
-          error: 'הקוד לא נכון. נסה שוב.',
-          attemptsLeft: Math.max(0, config.me.maxCodeAttempts - this.attempts)
+      if (code2 === 'BAD_CODE' || err?.status === 400 || err?.status === 401) {
+        this.attempts += 1;
+        if (this.attempts >= config.me.maxCodeAttempts) {
+          return this.fail('TOO_MANY_ATTEMPTS', 'יותר מדי ניסיונות. התחל מחדש.');
+        }
+        return this.setState('otp', {
+          error: 'הקוד לא התקבל. שלח Connectme לבוט שוב וקבל קוד חדש.'
         });
-        return;
       }
       return this.fail(code2, err?.message || 'האימות נכשל. נסה שוב.');
     }
-
-    clearTimeout(this.otpTimer);
-    this.otpTimer = null;
 
     await this.fetch();
   }

@@ -16,6 +16,20 @@
    */
   var DEFAULT_COUNTRY = 'IL';
 
+  /**
+   * המנתח חייב להיות טעון. בלעדיו הקוד היה נופל בשקט לניחוש לפי
+   * ספרות - בדיוק ההתנהגות שדרסה אנשי קשר - ושום שער לא היה יורה.
+   * 404, חוסם פרסומות או כשל רשת חייבים לעצור את המוצר, לא להשתיק אותו.
+   */
+  function getLib() {
+    var lib = (typeof globalThis !== 'undefined' && globalThis.libphonenumber) ||
+      (typeof window !== 'undefined' && window.libphonenumber);
+    if (!lib || typeof lib.parsePhoneNumberFromString !== 'function') {
+      throw new Error('PHONE_PARSER_MISSING');
+    }
+    return lib;
+  }
+
   /** ספרות שאינן ASCII (ערביות-הודיות, פרסיות, דוואנגרי) ל-ASCII */
   function asciiDigits(value) {
     return String(value).replace(/[\u0660-\u0669\u06f0-\u06f9\u0966-\u096f]/g, function (d) {
@@ -42,36 +56,56 @@
    * @returns {string[]}
    */
   function parseNumbers(raw) {
+    return parseField(raw).numbers;
+  }
+
+  /**
+   * ניתוח שדה אחד: כל המספרים שנמצאו, וכמה ספרות נשארו בלי שנצרכו.
+   *
+   * השארית היא הדיסקרימינטור. "050-123-4567 - 03-6123456" מחזיר
+   * מספר אחד תקין, והספרות של המספר השני פשוט נעלמות - בלי שאף
+   * מונה יבחין. האדם ההוא, ששמור אצל המשתמש, נכתב לקובץ ונדרס.
+   *
+   * @returns {{numbers: string[], leftover: number}}
+   */
+  function parseField(raw) {
     var value = asciiDigits(String(raw || '')).replace(/^\s*tel:/i, '').trim();
-    if (!value) return [];
+    if (!value) return { numbers: [], leftover: 0 };
 
-    var lib = (typeof globalThis !== 'undefined' && globalThis.libphonenumber) || window.libphonenumber;
-    if (!lib) return [];
+    var lib = getLib();
+    var found = [];
 
-    var out = [];
     try {
       var one = lib.parsePhoneNumberFromString(value, DEFAULT_COUNTRY);
-      // isPossible ולא רק isValid: מספר ישן, מספר זר שיוחס בטעות למדינת
-      // ברירת המחדל, או מספר שלא מוקצה - כולם אורך חוקי ואנשים אמיתיים.
-      // דחייה שלהם חוסמת את המשתמש לשווא. מה ש-isPossible כן פוסל הוא
-      // בדיוק מה שחיפשנו: אורך שאינו קיים בשום תוכנית מספור, כלומר
-      // ספרות שהודבקו - "03-6123456-204" יוצא 14 ספרות ונפסל.
-      if (one && (one.isValid() || one.isPossible())) {
-        out.push(String(one.number).replace(/\D/g, ''));
-      }
-    } catch (err) { /* ממשיכים לחיפוש ריבוי מספרים */ }
+      if (one && (one.isValid() || one.isPossible())) found.push(one);
+    } catch (err) { /* ממשיכים */ }
 
-    if (!out.length) {
-      // שדה שמחזיק כמה מספרים, או מספר עטוף בטקסט
-      try {
-        var it = lib.findNumbers(value, DEFAULT_COUNTRY, { v2: true });
-        for (var i = 0; i < it.length; i++) {
-          var d = String(it[i].number.number).replace(/\D/g, '');
-          if (d && out.indexOf(d) === -1) out.push(d);
-        }
-      } catch (err2) { /* אין מה לעשות - השדה יסומן כלא-מובן */ }
+    // תמיד, ולא רק כשה-parse נכשל: שדה יכול להחזיק מספר תקין אחד
+    // ועוד אחד שה-parse הבודד בלע.
+    try {
+      var it = lib.findNumbers(value, DEFAULT_COUNTRY, { v2: true });
+      for (var i = 0; i < it.length; i++) found.push(it[i].number);
+    } catch (err2) { /* ממשיכים */ }
+
+    var numbers = [];
+    var remaining = value.replace(/\D/g, '');
+
+    for (var k = 0; k < found.length; k++) {
+      var e164 = String(found[k].number || '').replace(/\D/g, '');
+      if (!e164 || numbers.indexOf(e164) !== -1) continue;
+      numbers.push(e164);
+
+      // מוציאים מהשארית את הספרות שהמספר הזה צרך
+      var nat = String(found[k].nationalNumber || '').replace(/\D/g, '');
+      var at = nat ? remaining.indexOf(nat) : -1;
+      if (at === -1) at = remaining.indexOf(e164);
+      if (at !== -1) {
+        var len = (at === remaining.indexOf(nat) && nat) ? nat.length : e164.length;
+        remaining = remaining.slice(0, at) + remaining.slice(at + len);
+      }
     }
-    return out;
+
+    return { numbers: numbers, leftover: remaining.length };
   }
 
   /**
@@ -144,7 +178,16 @@
     var value = asciiDigits(String(raw || '')).replace(/^\s*tel:/i, '').trim();
     var digits = value.replace(/\D/g, '');
     if (digits.length < 6) return true;
-    if (parseNumbers(raw).length > 0) return true;
+
+    var field = parseField(raw);
+
+    // שארית של 6 ספרות ומעלה **אחרי שכבר נמצא מספר** = מספר שלם
+    // שנעלם בשקט. זה מצב הכשל שנשאר פתוח אחרי ארבעה סבבים:
+    // "050-123-4567 - 03-6123456" מחזיר אחד, והשני מתאדה.
+    if (field.numbers.length > 0) return field.leftover < 6;
+
+    // לא נמצא כלום: מספר זר, ישן או לא מוקצה. אלה אנשים אמיתיים,
+    // והמפתחות מהספרות הגולמיות מכסים אותם. חסימה כאן היא חסימת שווא.
 
     // המנתח לא הכיר את המספר, אבל השדה מורכב רק מספרות וממפרידי
     // תצוגה - כלומר הוא מספר, גם אם ישן, זר או לא מוקצה. חסימת
@@ -193,25 +236,60 @@
     return out;
   }
 
+  /** האם הערך הזה הוא מספר טלפון תקין באמת */
+  function looksLikePhone(value) {
+    var v = asciiDigits(String(value || '')).trim();
+    if (v.replace(/\D/g, '').length < 6) return false;
+    try {
+      var one = getLib().parsePhoneNumberFromString(v, DEFAULT_COUNTRY);
+      return Boolean(one && one.isValid());
+    } catch (err) {
+      return false;
+    }
+  }
+
   /**
-   * כמה תאים בקובץ CSV נראים כמו מספר טלפון - בלי קשר לזיהוי הכותרת.
-   * זהו המכנה של שער השלמות: אם עמודה שלמה לא זוהתה, היחס יצנח.
+   * אילו עמודות ב-CSV הן באמת עמודות טלפון, לפי התוכן שלהן.
+   *
+   * זיהוי לפי מחלקת תווים סופר מיקוד (7 ספרות) ותאריך לידה
+   * ("1980-12-05") כמספרי טלפון. בייצוא רגיל של גוגל או אאוטלוק זה
+   * מנפח את המכנה פי שלושה, היחס צונח ל-0.33, והקובץ נחסם לשווא -
+   * כלומר מסלול ה-CSV מת לשני הייצואים הנפוצים ביותר.
+   *
+   * לכן מחליטים לפי תוכן: עמודה שבה רוב התאים הלא-ריקים הם מספר
+   * תקין היא עמודת טלפון. `isValid` מפריד נקי - מיקוד ותאריך נפסלים.
+   *
+   * @returns {{cols: number[], candidates: number}}
    */
-  function countCsvCandidates(text) {
-    var lines = text.split(/\r?\n/).filter(function (l) { return l.trim(); });
-    var n = 0;
+  function csvPhoneColumns(lines) {
+    var width = 0;
+    var rows = [];
     for (var r = 1; r < lines.length; r++) {
       var cells = splitCsvLine(lines[r]);
-      for (var c = 0; c < cells.length; c++) {
-        var parts = String(cells[c]).split(/:::|;|\//);
-        for (var i = 0; i < parts.length; i++) {
-          var v = asciiDigits(parts[i]).trim();
-          if (v.replace(/\D/g, '').length >= 6 &&
-              /^[\s+\-().0-9\u00a0\u200e\u200f\u202a-\u202e\u2066-\u2069]+$/.test(v)) n += 1;
+      rows.push(cells);
+      if (cells.length > width) width = cells.length;
+    }
+
+    var cols = [];
+    var candidates = 0;
+    for (var c = 0; c < width; c++) {
+      var filled = 0;
+      var valid = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var raw = rows[i][c];
+        if (raw === undefined || !String(raw).trim()) continue;
+        filled += 1;
+        var parts = String(raw).split(/:::|;|\/|,/);
+        for (var k = 0; k < parts.length; k++) {
+          if (looksLikePhone(parts[k])) { valid += 1; break; }
         }
       }
+      if (filled > 0 && valid / filled >= 0.6) {
+        cols.push(c);
+        candidates += filled;
+      }
     }
-    return n;
+    return { cols: cols, candidates: candidates };
   }
 
   /** כמה שורות טלפון יש בקובץ - לאימות שהפרסור לא פספס */
@@ -247,30 +325,34 @@
     return cells;
   }
 
-  /** מחלץ מספרים מייצוא CSV של אנשי הקשר של גוגל */
+  /** מחלץ מספרים מייצוא CSV של אנשי הקשר של גוגל או אאוטלוק */
   function fromCsv(text) {
     var lines = text.split(/\r?\n/).filter(function (l) { return l.trim(); });
     if (!lines.length) return [];
 
     var header = splitCsvLine(lines[0]);
-    var cols = [];
+    var byHeader = [];
     for (var i = 0; i < header.length; i++) {
       var h = header[i].toLowerCase();
-      if (/phone|mobile|cell|tel|fax|טלפון|נייד|סלולר|וואטסאפ|whatsapp/.test(h)) {
-        cols.push(i);
-      }
+      if (/phone|mobile|cell|tel|fax|טלפון|נייד|סלולר|וואטסאפ|whatsapp/.test(h)) byHeader.push(i);
+    }
+
+    // איחוד: מה שהכותרת אמרה ומה שהתוכן מוכיח
+    var byContent = csvPhoneColumns(lines).cols;
+    var cols = byHeader.slice();
+    for (var b = 0; b < byContent.length; b++) {
+      if (cols.indexOf(byContent[b]) === -1) cols.push(byContent[b]);
     }
 
     var out = [];
     for (var r = 1; r < lines.length; r++) {
       var cells = splitCsvLine(lines[r]);
-      // בלי כותרת מזוהה: סורקים כל תא שנראה כמו מספר טלפון
+      // בלי שום עמודה מזוהה: סורקים כל תא שנראה כמו מספר
       var scan = cols.length ? cols : cells.map(function (_, idx) { return idx; });
       for (var c = 0; c < scan.length; c++) {
         var val = cells[scan[c]];
         if (!val) continue;
-        if (!cols.length && !/^[\s+\-()0-9]{7,25}$/.test(asciiDigits(val))) continue;
-        // גוגל מפרידה כמה מספרים באותו תא ב-":::"
+        if (!cols.length && !looksLikePhone(val)) continue;
         var parts = String(val).split(/:::|;|\//);
         for (var p = 0; p < parts.length; p++) out.push(parts[p]);
       }
@@ -309,7 +391,9 @@
       unparsed: unparsed,
       // המכנה נמדד מהקלט הגולמי ולא מהתוצר. מכנה שנגזר מ-`raw` נותן
       // יחס 1.000 תמיד - גם כשעמודת "נייד" לא זוהתה ונזרקה בשלמותה.
-      telLines: isVcard ? countTelLines(body) : countCsvCandidates(body),
+      telLines: isVcard
+        ? countTelLines(body)
+        : csvPhoneColumns(body.split(/\r?\n/).filter(function (l) { return l.trim(); })).candidates,
       cards: isVcard ? (body.match(/BEGIN:VCARD/g) || []).length : 0
     };
   }
@@ -405,6 +489,7 @@
     unfold: unfold,
     understood: understood,
     parseNumbers: parseNumbers,
+    parseField: parseField,
     isSaved: isSaved,
     parseContactsFile: parseContactsFile,
     buildVcf: buildVcf,
