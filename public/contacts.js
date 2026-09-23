@@ -14,14 +14,39 @@
    * אותו אדם מופיע בספר הטלפונים כ-050-123-4567 ובוואטסאפ כ-+972501234567.
    * מנרמלים את שניהם לאותה צורה: בלי קידומת מדינה ובלי אפס מוביל.
    */
+  /**
+   * היכן נגמר המספר ומתחילה שלוחה או הערה.
+   *
+   * אותו תו אומר שני דברים שונים לפי מיקומו:
+   *   "+1 (646) 207-6164"  - הסוגר הוא קידומת אזור, חלק מהמספר
+   *   "050-123-4567 (2)"   - הסוגר הוא הערה אחרי מספר שלם
+   *
+   * לכן חותכים רק אחרי שכבר נאספו 7 ספרות, כלומר אחרי שיש מספר
+   * שעומד בפני עצמו. חיתוך מוקדם מדי מוחק מספר בינלאומי שלם;
+   * אי-חיתוך בולע את ספרות השלוחה למספר. שתי הטעויות מסתיימות
+   * באותו מקום: איש קשר שמור שאינו מזוהה, ולכן נדרס בייבוא.
+   *
+   * @returns {number} אינדקס החיתוך, או ‎-1 אם אין
+   */
+  function extensionStart(value) {
+    var digits = 0;
+    for (var i = 0; i < value.length; i++) {
+      var ch = value.charAt(i);
+      if (ch >= '0' && ch <= '9') { digits += 1; continue; }
+      if (digits < 7) continue;
+
+      if (ch === ';' || ch === '#' || ch === '|' || ch === '(') return i;
+      if (ch === ',' && value.charAt(i + 1) === ',') return i;
+      if ((ch === 'x' || ch === 'X') && /^\s*\d/.test(value.slice(i + 1))) return i;
+      if ((ch === 'e' || ch === 'E') && /^xt\.?\s*\d/i.test(value.slice(i + 1))) return i;
+    }
+    return -1;
+  }
+
   function phoneKeys(raw) {
     var value = String(raw || '');
 
-    // שלוחה או הערה אחרי המספר: "050-1234567 x12", "0501234567,,3", "054-1234 (2)".
-    // בלי הקילוף הזה הספרות של השלוחה נבלעות למספר ויוצרות מפתח שגוי -
-    // כלומר איש קשר שמור שלא מזוהה, ולכן נכתב לקובץ ונדרס.
-    // "x12" נצמד למספר, ולכן \b לא עוזר כאן - דורשים ספרה אחרי הסימון
-    var cut = value.search(/[;,#/|(]|\s*(?:ext\.?|x)\s*\d/i);
+    var cut = extensionStart(value);
     if (cut > 0) value = value.slice(0, cut);
 
     var digits = value.replace(/\D/g, '');
@@ -169,18 +194,27 @@
 
     var set = new Set();
     var withKeys = 0;
+    var unparsed = 0;
+
     for (var i = 0; i < raw.length; i++) {
       var keys = phoneKeys(raw[i]);
-      if (keys.length) withKeys += 1;
-      for (var k = 0; k < keys.length; k++) set.add(keys[k]);
+      if (keys.length) {
+        withKeys += 1;
+        for (var k = 0; k < keys.length; k++) set.add(keys[k]);
+      } else if (String(raw[i]).replace(/\D/g, '').length >= 7) {
+        // שדה שנראה כמו מספר אמיתי ולא הניב מפתח = כשל פרסור.
+        // מספר שירות קצר (100, *2800) אינו נספר כאן.
+        unparsed += 1;
+      }
     }
 
     return {
       set: set,
       numbers: withKeys,
-      // נתוני אימות: כמה שדות טלפון היו בקובץ מול כמה באמת נקראו.
-      // פער גדול פירושו פרסור חלקי - בדיוק המצב שבו אנשי קשר קיימים
-      // נחשבים ללא-שמורים ונדרסים בייבוא.
+      // נתוני אימות. שער באחוזים לבדו לא מספיק: פגם שנוגע ב-0.1%
+      // מהשורות עובר אותו ברווח, ושמונה אנשים נדרסים בשקט. לכן
+      // `unparsed` הוא רצפה מוחלטת - אפילו שדה אחד כזה הוא עצירה.
+      unparsed: unparsed,
       telLines: isVcard ? countTelLines(body) : 0,
       cards: isVcard ? (body.match(/BEGIN:VCARD/g) || []).length : 0
     };

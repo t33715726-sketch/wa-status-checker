@@ -12,7 +12,7 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { sessions } from './sessionManager.js';
 import { recordScan } from './stats.js';
-import { isConfigured as meConfigured } from './providers/meProvider.js';
+import { isConfigured as meConfigured, normalizeMsisdn } from './providers/meProvider.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '..', 'public');
@@ -31,7 +31,7 @@ app.use(
         'style-src': ["'self'"],
         'img-src': ["'self'", 'data:'],
         'font-src': ["'self'"],
-        'connect-src': ["'self'", 'wss:'],
+        'connect-src': ["'self'"],
         'object-src': ["'none'"],
         'base-uri': ["'none'"],
         'frame-ancestors': ["'none'"],
@@ -118,13 +118,17 @@ const io = new SocketServer(server, {
  * סופרים מהסוף: המזהה שהפרוקסי שלנו הוסיף הוא האחרון.
  */
 const clientIp = (socket) => {
+  // TRUST_PROXY=0 פירושו שאין פרוקסי, ולכן ה-header כולו חסר ערך
+  if (config.trustProxy <= 0) return socket.handshake.address || 'unknown';
+
   const fwd = socket.handshake.headers['x-forwarded-for'];
   if (typeof fwd === 'string' && fwd.length) {
     const chain = fwd.split(',').map((v) => v.trim()).filter(Boolean);
-    const hops = Math.max(1, config.trustProxy);
-    const idx = chain.length - hops;
+    const idx = chain.length - config.trustProxy;
+    // רק אם השרשרת ארוכה מספיק. שרשרת קצרה מהצפוי פירושה שהבקשה
+    // לא עברה בפרוקסי שלנו, ולכן כל ערך בה נשלט על ידי הלקוח -
+    // נפילה חזרה אליו מאפסת כל הגבלה לפי IP.
     if (idx >= 0 && chain[idx]) return chain[idx];
-    if (chain.length) return chain[0];
   }
   return socket.handshake.address || 'unknown';
 };
@@ -164,9 +168,13 @@ setInterval(() => {
  */
 const otpHits = new Map();
 
+const OTP_MAP_CAP = 50_000;
+
 const tooManyOtps = (phone) => {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
+  // תקרה קשיחה: מפתח לכל מספר יעד חי יממה, ובלעדיה המפה גדלה בלי גבול
+  if (!otpHits.has(phone) && otpHits.size >= OTP_MAP_CAP) return true;
   const hits = (otpHits.get(phone) || []).filter((t) => now - t < day);
   if (hits.length >= config.me.maxOtpPerPhone) {
     otpHits.set(phone, hits);
@@ -187,15 +195,14 @@ setInterval(() => {
   }
 }, 10 * 60_000).unref?.();
 
-const normalizePhone = (value) => {
-  if (typeof value !== 'string') return null;
-  let digits = value.replace(/\D/g, '');
-  if (!digits) return null;
-  // 05X... ישראלי -> 9725X...
-  if (digits.startsWith('0')) digits = `972${digits.slice(1)}`;
-  if (digits.length < 8 || digits.length > 15) return null;
-  return digits;
-};
+/**
+ * מנרמל אחד לכל המערכת.
+ *
+ * שני מנרמלים שונים פירושם שהמפתח שנספר בהגבלת הקצב אינו הערך
+ * שנשלח בפועל: "00501234567" ו-"501234567" מגיעים לאותו טלפון
+ * ומקבלים שתי מכסות נפרדות.
+ */
+const normalizePhone = (value) => normalizeMsisdn(value) || null;
 
 io.on('connection', (socket) => {
   const ip = clientIp(socket);
@@ -226,12 +233,6 @@ io.on('connection', (socket) => {
   socket.on('start', async ({ phone } = {}) => {
     if (boundId) return;
 
-    if (tooManyStarts(ip)) {
-      return socket.emit('failed', {
-        code: 'RATE_LIMITED',
-        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
-      });
-    }
     if (sessions.atCapacity()) {
       return socket.emit('failed', {
         code: 'BUSY',
@@ -242,6 +243,13 @@ io.on('connection', (socket) => {
       return socket.emit('failed', {
         code: 'IP_LIMIT',
         message: 'כבר יש חיבור פעיל מהמכשיר הזה.'
+      });
+    }
+    // אחרון: משתמש לא שורף מהמכסה שלו בגלל עומס בשרת
+    if (tooManyStarts(ip)) {
+      return socket.emit('failed', {
+        code: 'RATE_LIMITED',
+        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
       });
     }
 
@@ -268,22 +276,10 @@ io.on('connection', (socket) => {
         message: 'מסלול זה עדיין לא זמין. בינתיים אפשר להשתמש בסריקת וואטסאפ.'
       });
     }
-    if (tooManyStarts(ip)) {
-      return socket.emit('failed', {
-        code: 'RATE_LIMITED',
-        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
-      });
-    }
-    // הגבלה לכל מספר יעד: OTP נשלח לטלפון של מישהו, לא של השולח
+    // ולידציה לפני כל מונה, כדי שמספר שגוי לא ישרוף מכסה
     const target = normalizePhone(phone);
     if (!target) {
       return socket.emit('failed', { code: 'BAD_PHONE', message: 'המספר לא תקין. בדוק ונסה שוב.' });
-    }
-    if (tooManyOtps(target)) {
-      return socket.emit('failed', {
-        code: 'OTP_LIMIT',
-        message: 'נשלחו כבר מספר קודים למספר הזה היום. נסה שוב מחר.'
-      });
     }
     if (sessions.atCapacity()) {
       return socket.emit('failed', {
@@ -297,6 +293,19 @@ io.on('connection', (socket) => {
         message: 'כבר יש חיבור פעיל מהמכשיר הזה.'
       });
     }
+    if (tooManyStarts(ip)) {
+      return socket.emit('failed', {
+        code: 'RATE_LIMITED',
+        message: 'יותר מדי ניסיונות מהמכשיר הזה. המתן כמה דקות ונסה שוב.'
+      });
+    }
+    // הגבלה לכל מספר יעד: ה-OTP נשלח לטלפון של מישהו, לא של השולח
+    if (tooManyOtps(target)) {
+      return socket.emit('failed', {
+        code: 'OTP_LIMIT',
+        message: 'נשלחו כבר מספר קודים למספר הזה היום. נסה שוב מחר.'
+      });
+    }
 
     let session;
     try {
@@ -304,7 +313,7 @@ io.on('connection', (socket) => {
       session.emit = emitterFor(session);
       bind(session);
       socket.emit('session', { sessionId: session.id, source: 'me' });
-      await session.start(phone);
+      await session.start(target);
     } catch (err) {
       logger.error({ err: err?.message }, 'me session start failed');
       if (session) await sessions.destroy(session.id);

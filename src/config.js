@@ -17,8 +17,10 @@ export const config = {
   env: process.env.NODE_ENV || 'production',
   port: int(process.env.PORT, 8080),
 
-  // Railway/פרוקסי: מספר שכבות הפרוקסי שסומכים עליהן לצורך זיהוי IP
-  trustProxy: int(process.env.TRUST_PROXY, 1),
+  // מספר שכבות הפרוקסי שסומכים עליהן לצורך זיהוי IP.
+  // 0 = אין פרוקסי, ואז X-Forwarded-For מתעלמים ממנו לגמרי.
+  // int() מחזיר ברירת מחדל לכל ערך שאינו חיובי, ולכן 0 נקרא בנפרד.
+  trustProxy: process.env.TRUST_PROXY === '0' ? 0 : int(process.env.TRUST_PROXY, 1),
 
   session: {
     // כמה זמן סשן חי בלי פעילות לפני מחיקה מוחלטת מהזיכרון
